@@ -39,6 +39,7 @@
  * @author Julian Oes		<julian@oes.ch>
  * @author Sander Smeets	<sander@droneslab.com>
  */
+#include <px4_config.h>
 
 #include <stdio.h>
 #include <unistd.h>
@@ -80,7 +81,7 @@ using namespace DriverFramework;
 #endif
 
 // This array defines the arming state transitions. The rows are the new state, and the columns
-// are the current state. Using new state and current  state you can index into the array which
+// are the current state. Using new state and current state you can index into the array which
 // will be true for a valid transition or false for a invalid transition. In some cases even
 // though the transition is marked as true additional checks must be made. See arming_state_transition
 // code for those checks.
@@ -145,6 +146,7 @@ transition_result_t arming_state_transition(struct vehicle_status_s *status,
 			prearm_ret = preflight_check(status, mavlink_log_pub, true /* pre-arm */, false /* force_report */,
 						     status_flags, battery);
 		}
+
 		/* re-run the pre-flight check as long as sensors are failing */
 		if (!status_flags->condition_system_sensors_initialized
 				&& (new_arming_state == vehicle_status_s::ARMING_STATE_ARMED
@@ -166,7 +168,7 @@ transition_result_t arming_state_transition(struct vehicle_status_s *status,
 		 * Perform an atomic state update
 		 */
 		#ifdef __PX4_NUTTX
-		irqstate_t flags = irqsave();
+		irqstate_t flags = px4_enter_critical_section();
 		#endif
 
 		/* enforce lockdown in HIL */
@@ -280,6 +282,7 @@ transition_result_t arming_state_transition(struct vehicle_status_s *status,
 			if ((!status_flags->condition_system_prearm_error_reported &&
 			      status_flags->condition_system_hotplug_timeout) ||
 			     (new_arming_state == vehicle_status_s::ARMING_STATE_ARMED)) {
+
 				mavlink_and_console_log_critical(mavlink_log_pub, "Not ready to fly: Sensors not set up correctly");
 				status_flags->condition_system_prearm_error_reported = true;
 			}
@@ -304,7 +307,7 @@ transition_result_t arming_state_transition(struct vehicle_status_s *status,
 
 		/* end of atomic state update */
 		#ifdef __PX4_NUTTX
-		irqrestore(flags);
+		px4_leave_critical_section(flags);
 		#endif
 	}
 
@@ -585,7 +588,7 @@ transition_result_t hil_state_transition(hil_state_t new_state, orb_advert_t sta
  */
 bool set_nav_state(struct vehicle_status_s *status, struct commander_state_s *internal_state,
 		   const bool data_link_loss_enabled, const bool mission_finished,
-		   const bool stay_in_failsafe, status_flags_s *status_flags, bool landed)
+		   const bool stay_in_failsafe, status_flags_s *status_flags, bool landed, const bool rc_loss_enabled)
 {
 	navigation_state_t nav_state_old = status->nav_state;
 
@@ -601,7 +604,7 @@ bool set_nav_state(struct vehicle_status_s *status, struct commander_state_s *in
 	case commander_state_s::MAIN_STATE_ALTCTL:
 	case commander_state_s::MAIN_STATE_POSCTL:
 		/* require RC for all manual modes */
-		if ((status->rc_signal_lost || status_flags->rc_signal_lost_cmd) && armed && !landed) {
+		if (rc_loss_enabled && (status->rc_signal_lost || status_flags->rc_signal_lost_cmd) && armed && !landed) {
 			status->failsafe = true;
 
 			if (status_flags->condition_global_position_valid && status_flags->condition_home_position_valid) {

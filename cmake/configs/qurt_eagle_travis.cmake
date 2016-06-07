@@ -8,6 +8,7 @@ set(QURT_ENABLE_STUBS "1")
 set(CMAKE_TOOLCHAIN_FILE ${CMAKE_SOURCE_DIR}/cmake/cmake_hexagon/toolchain/Toolchain-qurt.cmake)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/cmake_hexagon")
+include(hexagon_sdk)
 
 if ("$ENV{HEXAGON_SDK_ROOT}" STREQUAL "")
 	message(FATAL_ERROR "Enviroment variable HEXAGON_SDK_ROOT must be set")
@@ -15,7 +16,9 @@ else()
 	set(HEXAGON_SDK_ROOT $ENV{HEXAGON_SDK_ROOT})
 endif()
 
-include_directories(${HEXAGON_SDK_ROOT}/lib/common/qurt/ADSPv5MP/include)
+include_directories(${HEXAGON_8074_INCLUDES})
+
+set(config_generate_parameters_scope ALL)
 
 set(config_module_list
 	drivers/device
@@ -53,6 +56,7 @@ set(config_module_list
 	modules/systemlib/mixer
 	modules/uORB
 	modules/commander
+	modules/load_mon
 
 	#
 	# Libraries
@@ -67,6 +71,7 @@ set(config_module_list
 	lib/terrain_estimation
 	lib/runway_takeoff
 	lib/tailsitter_recovery
+	lib/DriverFramework/framework
 
 	#
 	# QuRT port

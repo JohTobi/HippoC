@@ -66,6 +66,21 @@ public:
 	void reset(battery_status_s *battery_status);
 
 	/**
+	 * Get the battery cell count
+	 */
+	int cell_count() { return _param_n_cells.get(); }
+
+	/**
+	 * Get the empty voltage per cell
+	 */
+	float empty_cell_voltage() { return _param_v_empty.get(); }
+
+	/**
+	 * Get the full voltage per cell
+	 */
+	float full_cell_voltage() { return _param_v_full.get(); }
+
+	/**
 	 * Update current battery status message.
 	 *
 	 * @param voltage_v: current voltage in V
@@ -73,24 +88,29 @@ public:
 	 * @param throttle_normalized: throttle from 0 to 1
 	 */
 	void updateBatteryStatus(hrt_abstime timestamp, float voltage_v, float current_a, float throttle_normalized,
-				 battery_status_s *status);
+				 bool armed, battery_status_s *status);
 
 private:
 	void filterVoltage(float voltage_v);
+	void filterCurrent(float current_a);
 	void sumDischarged(hrt_abstime timestamp, float current_a);
-	void estimateRemaining(float voltage_v, float throttle_normalized);
+	void estimateRemaining(float voltage_v, float throttle_normalized, bool armed);
 	void determineWarning();
 
 	control::BlockParamFloat _param_v_empty;
 	control::BlockParamFloat _param_v_full;
-	control::BlockParamFloat _param_n_cells;
+	control::BlockParamInt _param_n_cells;
 	control::BlockParamFloat _param_capacity;
 	control::BlockParamFloat _param_v_load_drop;
+	control::BlockParamFloat _param_low_thr;
+	control::BlockParamFloat _param_crit_thr;
 
 	float _voltage_filtered_v;
-	float _throttle_filtered;
+	float _current_filtered_a;
 	float _discharged_mah;
-	float _remaining;
+	float _remaining_voltage;		///< normalized battery charge level remaining based on voltage
+	float _remaining_capacity;		///< normalized battery charge level remaining based on capacity
+	float _remaining;			///< normalized battery charge level, selected based on config param
 	uint8_t _warning;
 	hrt_abstime _last_timestamp;
 };

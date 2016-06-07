@@ -49,6 +49,7 @@
 #include "topics/position_setpoint_triplet.h"
 #include "topics/vehicle_status.h"
 #include "topics/manual_control_setpoint.h"
+#include "topics/mavlink_log.h"
 #include "topics/vehicle_local_position_setpoint.h"
 #include "topics/vehicle_local_position.h"
 #include "topics/vehicle_attitude_setpoint.h"
@@ -145,6 +146,12 @@ void Subscription<T>::update()
 }
 
 template <class T>
+bool Subscription<T>::check_updated()
+{
+	return SubscriptionBase::updated();
+}
+
+template <class T>
 const T &Subscription<T>::get() { return _data; }
 
 template class __EXPORT Subscription<parameter_update_s>;
@@ -159,6 +166,7 @@ template class __EXPORT Subscription<encoders_s>;
 template class __EXPORT Subscription<position_setpoint_triplet_s>;
 template class __EXPORT Subscription<vehicle_status_s>;
 template class __EXPORT Subscription<manual_control_setpoint_s>;
+template class __EXPORT Subscription<mavlink_log_s>;
 template class __EXPORT Subscription<vehicle_local_position_setpoint_s>;
 template class __EXPORT Subscription<vehicle_local_position_s>;
 template class __EXPORT Subscription<vehicle_attitude_setpoint_s>;

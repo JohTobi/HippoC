@@ -17,6 +17,7 @@ set(config_module_list
 	modules/ekf2
 	modules/ekf2_replay
 	modules/sdlog2
+	modules/logger
 	lib/controllib
 	lib/mathlib
 	lib/mathlib/math/filter
@@ -25,6 +26,7 @@ set(config_module_list
 	lib/external_lgpl
 	lib/geo
 	lib/geo_lookup
+	lib/DriverFramework/framework
 	)
 
 set(config_extra_builtin_cmds

@@ -46,9 +46,6 @@
  * @author Anton Babushkin <anton@px4.io>
  */
 
-// TODO-JYW: TESTING-TESTING
-#define DEBUG_BUILD 1
-
 #include <board_config.h>
 
 #include <px4_config.h>
@@ -115,15 +112,15 @@ using namespace DriverFramework;
  * IN3 - battery current
  * IN4 - 5V sense
  * IN10 - spare (we could actually trim these from the set)
- * IN11 - spare (we could actually trim these from the set)
+ * IN11 - spare on FMUv2 & v3, RC RSSI on FMUv4
  * IN12 - spare (we could actually trim these from the set)
- * IN13 - aux1
- * IN14 - aux2
- * IN15 - pressure sensor
+ * IN13 - aux1 on FMUv2, unavaible on v3 & v4
+ * IN14 - aux2 on FMUv2, unavaible on v3 & v4
+ * IN15 - pressure sensor on FMUv2, unavaible on v3 & v4
  *
  * IO:
  * IN4 - servo supply rail
- * IN5 - analog RSSI
+ * IN5 - analog RSSI on FMUv2 & v3
  *
  * The channel definitions (e.g., ADC_BATTERY_VOLTAGE_CHANNEL, ADC_BATTERY_CURRENT_CHANNEL, and ADC_AIRSPEED_VOLTAGE_CHANNEL) are defined in board_config.h
  */
@@ -217,6 +214,7 @@ private:
 	int		_accel_sub[SENSOR_COUNT_MAX];	/**< raw accel data subscription */
 	int		_mag_sub[SENSOR_COUNT_MAX];	/**< raw mag data subscription */
 	int		_baro_sub[SENSOR_COUNT_MAX];	/**< raw baro data subscription */
+	int		_actuator_ctrl_0_sub;		/**< attitude controls sub */
 	unsigned	_gyro_count;			/**< raw gyro data count */
 	unsigned	_accel_count;			/**< raw accel data count */
 	unsigned	_mag_count;			/**< raw mag data count */
@@ -547,7 +545,7 @@ Sensors::Sensors() :
 	_diff_pres_pub(nullptr),
 
 	/* performance counters */
-	_loop_perf(perf_alloc(PC_ELAPSED, "sensor task update")),
+	_loop_perf(perf_alloc(PC_ELAPSED, "sensors")),
 	_airspeed_validator(),
 
 	_param_rc_values{},
@@ -671,6 +669,7 @@ Sensors::Sensors() :
 	(void)param_find("CAL_MAG0_ROT");
 	(void)param_find("CAL_MAG1_ROT");
 	(void)param_find("CAL_MAG2_ROT");
+	(void)param_find("CAL_MAG_SIDES");
 	(void)param_find("SYS_PARAM_VER");
 	(void)param_find("SYS_AUTOSTART");
 	(void)param_find("SYS_AUTOCONFIG");
@@ -951,9 +950,9 @@ Sensors::parameters_update()
 	DevHandle h_baro;
 	DevMgr::getHandle(BARO0_DEVICE_PATH, h_baro);
 
-#ifndef __PX4_QURT
+#if !defined(__PX4_QURT) && !defined(__PX4_POSIX_RPI2)
 
-	// TODO: this needs fixing for QURT
+	// TODO: this needs fixing for QURT and Raspberry Pi
 	if (!h_baro.isValid()) {
 		warnx("ERROR: no barometer found on %s (%d)", BARO0_DEVICE_PATH, h_baro.getError());
 		return ERROR;
@@ -1519,7 +1518,7 @@ Sensors::parameter_update_poll(bool forced)
 bool
 Sensors::apply_gyro_calibration(DevHandle &h, const struct gyro_calibration_s *gcal, const int device_id)
 {
-#ifndef __PX4_QURT
+#if !defined(__PX4_QURT) && !defined(__PX4_POSIX_RPI2)
 
 	/* On most systems, we can just use the IOCTL call to set the calibration params. */
 	const int res = h.ioctl(GYROIOCSSCALE, (long unsigned int)gcal);
@@ -1540,7 +1539,7 @@ Sensors::apply_gyro_calibration(DevHandle &h, const struct gyro_calibration_s *g
 bool
 Sensors::apply_accel_calibration(DevHandle &h, const struct accel_calibration_s *acal, const int device_id)
 {
-#ifndef __PX4_QURT
+#if !defined(__PX4_QURT) && !defined(__PX4_POSIX_RPI2)
 
 	/* On most systems, we can just use the IOCTL call to set the calibration params. */
 	const int res = h.ioctl(ACCELIOCSSCALE, (long unsigned int)acal);
@@ -1561,7 +1560,7 @@ Sensors::apply_accel_calibration(DevHandle &h, const struct accel_calibration_s 
 bool
 Sensors::apply_mag_calibration(DevHandle &h, const struct mag_calibration_s *mcal, const int device_id)
 {
-#ifndef __PX4_QURT
+#if !defined(__PX4_QURT) && !defined(__PX4_POSIX_RPI2)
 
 	/* On most systems, we can just use the IOCTL call to set the calibration params. */
 	const int res = h.ioctl(MAGIOCSSCALE, (long unsigned int)mcal);
@@ -1657,11 +1656,13 @@ Sensors::adc_poll(struct sensor_combined_s &raw)
 				if (ADC_BATTERY_VOLTAGE_CHANNEL == buf_adc[i].am_channel) {
 					/* Voltage in volts */
 					bat_voltage_v = (buf_adc[i].am_data * _parameters.battery_voltage_scaling);
-					updated_battery = true;
+
+					if (bat_voltage_v > 0.5f) {
+						updated_battery = true;
+					}
 
 				} else if (ADC_BATTERY_CURRENT_CHANNEL == buf_adc[i].am_channel) {
 					bat_current_a = (buf_adc[i].am_data * _parameters.battery_current_scaling);
-					updated_battery = true;
 
 #ifdef ADC_AIRSPEED_VOLTAGE_CHANNEL
 
@@ -1699,10 +1700,10 @@ Sensors::adc_poll(struct sensor_combined_s &raw)
 			}
 
 			if (updated_battery) {
-				// XXX TODO: throttle is hardcoded here. The dependency to throttle would need to be
-				// removed, or it needs to be subscribed to actuator controls.
-				const float throttle = 0.0f;
-				_battery.updateBatteryStatus(t, bat_voltage_v, bat_current_a, throttle, &_battery_status);
+				actuator_controls_s ctrl;
+				orb_copy(ORB_ID(actuator_controls_0), _actuator_ctrl_0_sub, &ctrl);
+				_battery.updateBatteryStatus(t, bat_voltage_v, bat_current_a, ctrl.control[actuator_controls_s::INDEX_THROTTLE],
+							     _armed, &_battery_status);
 
 				/* announce the battery status if needed, just publish else */
 				if (_battery_pub != nullptr) {
@@ -1941,7 +1942,7 @@ Sensors::rc_poll()
 			if (_parameters.rc_map_flightmode > 0) {
 
 				/* the number of valid slots equals the index of the max marker minus one */
-				const unsigned num_slots = manual_control_setpoint_s::MODE_SLOT_MAX;
+				const int num_slots = manual_control_setpoint_s::MODE_SLOT_MAX;
 
 				/* the half width of the range of a slot is the total range
 				 * divided by the number of slots, again divided by two
@@ -1993,8 +1994,7 @@ Sensors::rc_poll()
 			}
 
 			/* copy from mapped manual control to control group 3 */
-			struct actuator_controls_s actuator_group_3;
-			memset(&actuator_group_3, 0 , sizeof(actuator_group_3));
+			struct actuator_controls_s actuator_group_3 = {};
 
 			actuator_group_3.timestamp = rc_input.timestamp_last_signal;
 
@@ -2062,7 +2062,7 @@ Sensors::task_main()
 	/* This calls a sensors_init which can have different implementations on NuttX, POSIX, QURT. */
 	ret = sensors_init();
 
-#ifndef __PX4_QURT
+#if !defined(__PX4_QURT) && !defined(__PX4_POSIX_RPI2)
 	// TODO: move adc_init into the sensors_init call.
 	ret = ret || adc_init();
 #endif
@@ -2121,6 +2121,7 @@ Sensors::task_main()
 	_params_sub = orb_subscribe(ORB_ID(parameter_update));
 	_rc_parameter_map_sub = orb_subscribe(ORB_ID(rc_parameter_map));
 	_manual_control_sub = orb_subscribe(ORB_ID(manual_control_setpoint));
+	_actuator_ctrl_0_sub = orb_subscribe(ORB_ID(actuator_controls_0));
 
 	/*
 	 * do advertisements
@@ -2201,11 +2202,17 @@ Sensors::task_main()
 			/* If the secondary failed as well, go to the tertiary, also only if available. */
 			if (hrt_elapsed_time(&raw.gyro_timestamp[1]) > 20 * 1000 && _gyro_sub[2] >= 0) {
 				fds[0].fd = _gyro_sub[2];
-				warnx("failing over to third gyro");
+
+				if (!_hil_enabled) {
+					warnx("failing over to third gyro");
+				}
 
 			} else if (_gyro_sub[1] >= 0) {
 				fds[0].fd = _gyro_sub[1];
-				warnx("failing over to second gyro");
+
+				if (!_hil_enabled) {
+					warnx("failing over to second gyro");
+				}
 			}
 		}
 

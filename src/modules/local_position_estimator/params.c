@@ -4,7 +4,7 @@
 
 
 /**
- * Enable accelerometer integration for prediction.
+ * Accelerometer integration for prediction.
  *
  * @boolean
  * @group Local Position Estimator
@@ -129,7 +129,7 @@ PARAM_DEFINE_FLOAT(LPE_ACC_Z, 0.0454f);
 PARAM_DEFINE_FLOAT(LPE_BAR_Z, 1.0f);
 
 /**
- * Enable GPS
+ * Enables GPS data, also forces alt init with GPS
  *
  * @group Local Position Estimator
  * @boolean
@@ -204,6 +204,17 @@ PARAM_DEFINE_FLOAT(LPE_GPS_VZ, 0.25f);
 PARAM_DEFINE_FLOAT(LPE_EPH_MAX, 3.0f);
 
 /**
+ * GPS max epv
+ *
+ * @group Local Position Estimator
+ * @unit m
+ * @min 1.0
+ * @max 5.0
+ * @decimal 3
+ */
+PARAM_DEFINE_FLOAT(LPE_EPV_MAX, 5.0f);
+
+/**
  * Vision xy standard deviation.
  *
  * @group Local Position Estimator
@@ -226,7 +237,7 @@ PARAM_DEFINE_FLOAT(LPE_VIS_XY, 0.5f);
 PARAM_DEFINE_FLOAT(LPE_VIS_Z, 0.5f);
 
 /**
- * Enabled vision correction
+ * Vision correction
  *
  * @group Local Position Estimator
  * @boolean

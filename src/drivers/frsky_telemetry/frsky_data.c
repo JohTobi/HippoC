@@ -96,7 +96,7 @@ static struct vehicle_global_position_s *global_pos;
 static struct sensor_combined_s *sensor_combined;
 
 static int battery_status_sub = -1;
-static int global_position_sub = -1;
+static int vehicle_global_position_sub = -1;
 static int sensor_sub = -1;
 
 /**
@@ -113,7 +113,7 @@ bool frsky_init()
 	}
 
 	battery_status_sub = orb_subscribe(ORB_ID(battery_status));
-	global_position_sub = orb_subscribe(ORB_ID(vehicle_global_position));
+	vehicle_global_position_sub = orb_subscribe(ORB_ID(vehicle_global_position));
 	sensor_sub = orb_subscribe(ORB_ID(sensor_combined));
 	return true;
 }
@@ -175,7 +175,6 @@ static void frsky_send_data(int uart, uint8_t id, int16_t data)
 void frsky_update_topics()
 {
 	bool updated;
-
 	/* get a local copy of the current sensor values */
 	orb_check(sensor_sub, &updated);
 
@@ -191,10 +190,10 @@ void frsky_update_topics()
 	}
 
 	/* get a local copy of the global position data */
-	orb_check(global_position_sub, &updated);
+	orb_check(vehicle_global_position_sub, &updated);
 
 	if (updated) {
-		orb_copy(ORB_ID(vehicle_global_position), global_position_sub, global_pos);
+		orb_copy(ORB_ID(vehicle_global_position), vehicle_global_position_sub, global_pos);
 	}
 }
 
@@ -374,4 +373,3 @@ bool frsky_parse_host(uint8_t *sbuf, int nbytes, struct adc_linkquality *v)
 
 	return data_ready;
 }
-

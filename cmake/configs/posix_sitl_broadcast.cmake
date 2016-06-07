@@ -49,6 +49,7 @@ set(config_module_list
 	modules/fw_pos_control_l1
 	modules/dataman
 	modules/sdlog2
+	modules/logger
 	modules/commander
 	lib/controllib
 	lib/mathlib
@@ -62,6 +63,7 @@ set(config_module_list
 	lib/terrain_estimation
 	lib/runway_takeoff
 	lib/tailsitter_recovery
+	lib/DriverFramework/framework
 	examples/px4_simple_app
 	)
 

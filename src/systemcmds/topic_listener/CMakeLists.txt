@@ -33,6 +33,7 @@
 
 add_custom_command(OUTPUT topic_listener.cpp
                 COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Tools/generate_listener.py ${CMAKE_SOURCE_DIR} > topic_listener.cpp
+                DEPENDS msg_gen
                 )
 
 add_custom_target(generate_topic_listener

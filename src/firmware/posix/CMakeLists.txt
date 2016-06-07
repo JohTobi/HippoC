@@ -4,7 +4,7 @@ px4_posix_generate_builtin_commands(
 	OUT apps.h
 	MODULE_LIST ${module_libraries})
 
-if ("${BOARD}" STREQUAL "eagle")
+if ("${BOARD}" STREQUAL "eagle" OR ("${BOARD}" STREQUAL "excelsior"))
 
 	include(fastrpc)
 	include(linux_app)
@@ -17,17 +17,16 @@ if ("${BOARD}" STREQUAL "eagle")
 		IDL_NAME px4muorb
 		APPS_DEST "/home/linaro"
 		SOURCES
-		px4muorb_stub.c
-		${CMAKE_SOURCE_DIR}/src/platforms/posix/main.cpp
-		apps.h
+			px4muorb_stub.c
+			${CMAKE_SOURCE_DIR}/src/platforms/posix/main.cpp
+			apps.h
 		LINK_LIBS
-		-Wl,--start-group
-		${module_libraries}
-		df_driver_framework
-		${df_driver_libs}
-		${FASTRPC_ARM_LIBS}
-		pthread m rt
-		-Wl,--end-group
+			-Wl,--start-group
+			${module_libraries}
+			${df_driver_libs}
+			${FASTRPC_ARM_LIBS}
+			pthread m rt
+			-Wl,--end-group
 		)
 
 	px4_add_adb_push(OUT upload
@@ -38,7 +37,66 @@ if ("${BOARD}" STREQUAL "eagle")
 			 DEPENDS mainapp
 			 DEST /home/linaro)
 
+elseif ("${BOARD}" STREQUAL "rpi2")
+
+	add_executable(mainapp
+		${CMAKE_SOURCE_DIR}/src/platforms/posix/main.cpp
+		apps.h
+		)
+
+	target_link_libraries(mainapp
+		-Wl,--start-group
+		${module_libraries}
+		df_driver_framework
+		${df_driver_libs}
+		pthread m rt
+		-Wl,--end-group
+		)
+
+	px4_add_scp_push(OUT upload
+			 OS ${OS}
+			 BOARD ${BOARD}
+			 FILES ${CMAKE_CURRENT_BINARY_DIR}/mainapp
+				 ${CMAKE_SOURCE_DIR}/posix-configs/rpi2/mainapp.config
+			 DEPENDS mainapp
+			 DEST /home/pi)
+
+elseif ("${BOARD}" STREQUAL "bebop")
+
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static")
+
+	add_executable(mainapp
+		${CMAKE_SOURCE_DIR}/src/platforms/posix/main.cpp
+		apps.h
+		)
+
+	if (NOT APPLE)
+		target_link_libraries(mainapp
+			-Wl,--start-group
+			${module_libraries}
+			${df_driver_libs}
+			pthread m rt
+			-Wl,--end-group
+			)
+	else()
+		target_link_libraries(mainapp
+			${module_libraries}
+			${df_driver_libs}
+			pthread m
+			)
+	endif()
+
+	px4_add_adb_push_to_bebop(OUT upload
+			 OS ${OS}
+			 BOARD ${BOARD}
+			 FILES ${CMAKE_CURRENT_BINARY_DIR}/mainapp
+						 ${CMAKE_SOURCE_DIR}/posix-configs/bebop/mainapp.config
+			 DEPENDS mainapp
+			 DEST /usr/bin)
+			 
 else()
+
 	add_executable(mainapp
 		${CMAKE_SOURCE_DIR}/src/platforms/posix/main.cpp
 		apps.h
@@ -47,7 +105,6 @@ else()
 		target_link_libraries(mainapp
 			-Wl,--start-group
 			${module_libraries}
-			df_driver_framework
 			${df_driver_libs}
 			pthread m rt
 			-Wl,--end-group
@@ -55,7 +112,6 @@ else()
 	else()
 		target_link_libraries(mainapp
 			${module_libraries}
-			df_driver_framework
 			${df_driver_libs}
 			pthread m
 			)

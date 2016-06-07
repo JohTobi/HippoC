@@ -49,13 +49,13 @@ uORB::Manager *uORB::Manager::_Instance = nullptr;
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-uORB::Manager *uORB::Manager::get_instance()
+bool uORB::Manager::initialize()
 {
 	if (_Instance == nullptr) {
 		_Instance = new uORB::Manager();
 	}
 
-	return _Instance;
+	return _Instance != nullptr;
 }
 
 //-----------------------------------------------------------------------------
@@ -87,14 +87,14 @@ int uORB::Manager::orb_exists(const struct orb_metadata *meta, int instance)
 #endif
 }
 
-orb_advert_t uORB::Manager::orb_advertise(const struct orb_metadata *meta, const void *data)
+orb_advert_t uORB::Manager::orb_advertise(const struct orb_metadata *meta, const void *data, unsigned int queue_size)
 {
 	//warnx("orb_advertise meta = %p", meta);
-	return orb_advertise_multi(meta, data, nullptr, ORB_PRIO_DEFAULT);
+	return orb_advertise_multi(meta, data, nullptr, ORB_PRIO_DEFAULT, queue_size);
 }
 
 orb_advert_t uORB::Manager::orb_advertise_multi(const struct orb_metadata *meta, const void *data, int *instance,
-		int priority)
+		int priority, unsigned int queue_size)
 {
 	int result, fd;
 	orb_advert_t advertiser;
@@ -107,6 +107,15 @@ orb_advert_t uORB::Manager::orb_advertise_multi(const struct orb_metadata *meta,
 	if (fd == ERROR) {
 		warnx("node_open as advertiser failed.");
 		return nullptr;
+	}
+
+	/* Set the queue size. This must be done before the first publication; thus it fails if
+	 * this is not the first advertiser.
+	 */
+	result = px4_ioctl(fd, ORBIOCSETQUEUESIZE, (unsigned long)queue_size);
+
+	if (result < 0 && queue_size > 1) {
+		PX4_WARN("orb_advertise_multi: failed to set queue size");
 	}
 
 	/* get the advertiser handle and close the node */
@@ -127,6 +136,11 @@ orb_advert_t uORB::Manager::orb_advertise_multi(const struct orb_metadata *meta,
 	}
 
 	return advertiser;
+}
+
+int uORB::Manager::orb_unadvertise(orb_advert_t handle)
+{
+	return uORB::DeviceNode::unadvertise(handle);
 }
 
 int uORB::Manager::orb_subscribe(const struct orb_metadata *meta)
@@ -188,6 +202,14 @@ int uORB::Manager::orb_priority(int handle, int32_t *priority)
 int uORB::Manager::orb_set_interval(int handle, unsigned interval)
 {
 	return px4_ioctl(handle, ORBIOCSETINTERVAL, interval * 1000);
+}
+
+int uORB::Manager::orb_get_interval(int handle, unsigned *interval)
+{
+	ASSERT(interval);
+	int ret = px4_ioctl(handle, ORBIOCGETINTERVAL, (unsigned long)interval);
+	*interval /= 1000;
+	return ret;
 }
 
 
