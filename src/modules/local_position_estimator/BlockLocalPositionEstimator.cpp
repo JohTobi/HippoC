@@ -25,8 +25,8 @@ BlockLocalPositionEstimator::BlockLocalPositionEstimator() :
 	// subscriptions, set rate, add to list
 	_sub_armed(ORB_ID(actuator_armed), 1000 / 2, 0, &getSubscriptions()),
 	_sub_att(ORB_ID(vehicle_attitude), 1000 / 100, 0, &getSubscriptions()),
-	// flow 10 hz
-	_sub_flow(ORB_ID(optical_flow), 1000 / 10, 0, &getSubscriptions()),
+	// set flow max update rate higher than expected to we don't lose packets
+	_sub_flow(ORB_ID(optical_flow), 1000 / 100, 0, &getSubscriptions()),
 	// main prediction loop, 100 hz
 	_sub_sensor(ORB_ID(sensor_combined), 1000 / 100, 0, &getSubscriptions()),
 	// status updates 2 hz
@@ -50,6 +50,7 @@ BlockLocalPositionEstimator::BlockLocalPositionEstimator() :
 	_pub_lpos(ORB_ID(vehicle_local_position), -1, &getPublications()),
 	_pub_gpos(ORB_ID(vehicle_global_position), -1, &getPublications()),
 	_pub_est_status(ORB_ID(estimator_status), -1, &getPublications()),
+	_pub_innov(ORB_ID(ekf2_innovations), -1, &getPublications()),
 
 	// map projection
 	_map_ref(),
@@ -479,6 +480,7 @@ void BlockLocalPositionEstimator::update()
 		// update all publications if possible
 		publishLocalPos();
 		publishEstimatorStatus();
+		_pub_innov.update();
 
 		if (_validXY) {
 			publishGlobalPos();

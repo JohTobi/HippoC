@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Copyright (c) 2015 Mark Charlebois. All rights reserved.
+ *   Copyright (c) 2016 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,28 +31,47 @@
  *
  ****************************************************************************/
 
-#ifndef _uORBGtestTopics_hpp_
-#define _uORBGtestTopics_hpp_
+/**
+ * @file hysteresis.cpp
+ *
+ * @author Julian Oes <julian@oes.ch>
+ */
 
-#include "uORB/uORB.h"
+#include <px4_log.h>
+#include "systemlib/hysteresis/hysteresis.h"
 
-namespace uORB_test
+
+namespace systemlib
 {
-   struct orb_topic_A
-   {
-     int16_t val;
-   };
 
-   struct orb_topic_B
-   {
-     int16_t val;
-   };
 
-   ORB_DEFINE(topicA, struct orb_topic_A, nullptr, "TOPICA:int16 val;");
-   ORB_DEFINE(topicB, struct orb_topic_B, nullptr, "TOPICB:int16 val;");
+void
+Hysteresis::set_state_and_update(const bool new_state)
+{
+	if (new_state != _state) {
+		if (new_state != _requested_state) {
+			_requested_state = new_state;
+			_last_time_to_change_state = hrt_absolute_time();
+		}
 
-   ORB_DEFINE(topicA_clone, struct orb_topic_A, nullptr, "TOPICA_CLONE:int16 val;";
-   ORB_DEFINE(topicB_clone, struct orb_topic_B, nullptr, "TOPICB_CLONE:int16 val;");
+	} else {
+		_requested_state = _state;
+	}
+
+	update();
 }
 
-#endif // _UnitTest_uORBTopics_hpp_
+void
+Hysteresis::update()
+{
+	if (_requested_state != _state) {
+
+		if (hrt_elapsed_time(&_last_time_to_change_state) >= (_state ?
+				_hysteresis_time_from_true_us :
+				_hysteresis_time_from_false_us)) {
+			_state = _requested_state;
+		}
+	}
+}
+
+} // namespace systemlib

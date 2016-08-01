@@ -41,7 +41,6 @@ set(config_module_list
 	modules/fw_att_control
 	modules/fw_pos_control_l1
 	modules/land_detector
-	modules/load_mon
 	modules/logger
 	modules/mavlink
 	modules/mc_att_control
@@ -71,6 +70,7 @@ set(config_module_list
 	lib/launchdetection
 	lib/mathlib
 	lib/mathlib/math/filter
+	lib/rc
 	lib/runway_takeoff
 	lib/tailsitter_recovery
 	lib/terrain_estimation
@@ -80,9 +80,11 @@ set(config_module_list
 	#
 	# Testing
 	#
+	drivers/sf0x/sf0x_tests
+	lib/rc/rc_tests
 	modules/commander/commander_tests
 	modules/controllib_test
-	#modules/mavlink/mavlink_tests
+	#modules/mavlink/mavlink_tests #TODO: fix mavlink_tests
 	modules/unit_test
 	modules/uORB/uORB_tests
 	systemcmds/tests
