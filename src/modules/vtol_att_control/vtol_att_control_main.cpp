@@ -104,7 +104,6 @@ VtolAttitudeControl::VtolAttitudeControl() :
 	memset(&_fw_virtual_v_rates_sp, 0, sizeof(_fw_virtual_v_rates_sp));
 	memset(&_manual_control_sp, 0, sizeof(_manual_control_sp));
 	memset(&_v_control_mode, 0, sizeof(_v_control_mode));
-	memset(&_vtol_vehicle_status, 0, sizeof(_vtol_vehicle_status));
 	memset(&_actuators_out_0, 0, sizeof(_actuators_out_0));
 	memset(&_actuators_out_1, 0, sizeof(_actuators_out_1));
 	memset(&_actuators_mc_in, 0, sizeof(_actuators_mc_in));
@@ -511,10 +510,10 @@ VtolAttitudeControl::is_fixed_wing_requested()
  * Abort front transition
  */
 void
-VtolAttitudeControl::abort_front_transition()
+VtolAttitudeControl::abort_front_transition(const char *reason)
 {
 	if (!_abort_front_transition) {
-		mavlink_log_critical(&_mavlink_log_pub, "Transition timeout or FW min alt occured, aborting");
+		mavlink_log_critical(&_mavlink_log_pub, "Abort: %s", reason);
 		_abort_front_transition = true;
 		_vtol_vehicle_status.vtol_transition_failsafe = true;
 	}
@@ -585,6 +584,7 @@ VtolAttitudeControl::parameters_update()
 */
 void VtolAttitudeControl::fill_mc_att_rates_sp()
 {
+	_v_rates_sp.timestamp 	= _mc_virtual_v_rates_sp.timestamp;
 	_v_rates_sp.roll 	= _mc_virtual_v_rates_sp.roll;
 	_v_rates_sp.pitch 	= _mc_virtual_v_rates_sp.pitch;
 	_v_rates_sp.yaw 	= _mc_virtual_v_rates_sp.yaw;
@@ -596,6 +596,7 @@ void VtolAttitudeControl::fill_mc_att_rates_sp()
 */
 void VtolAttitudeControl::fill_fw_att_rates_sp()
 {
+	_v_rates_sp.timestamp 	= _fw_virtual_v_rates_sp.timestamp;
 	_v_rates_sp.roll 	= _fw_virtual_v_rates_sp.roll;
 	_v_rates_sp.pitch 	= _fw_virtual_v_rates_sp.pitch;
 	_v_rates_sp.yaw 	= _fw_virtual_v_rates_sp.yaw;
@@ -667,11 +668,12 @@ void VtolAttitudeControl::task_main()
 
 	while (!_task_should_exit) {
 		/*Advertise/Publish vtol vehicle status*/
+		_vtol_vehicle_status.timestamp = hrt_absolute_time();
+
 		if (_vtol_vehicle_status_pub != nullptr) {
 			orb_publish(ORB_ID(vtol_vehicle_status), _vtol_vehicle_status_pub, &_vtol_vehicle_status);
 
 		} else {
-			_vtol_vehicle_status.timestamp = hrt_absolute_time();
 			_vtol_vehicle_status_pub = orb_advertise(ORB_ID(vtol_vehicle_status), &_vtol_vehicle_status);
 		}
 

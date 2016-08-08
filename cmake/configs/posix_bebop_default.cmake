@@ -24,6 +24,7 @@ set(config_module_list
 	modules/sensors
 	platforms/posix/drivers/df_ms5607_wrapper
 	platforms/posix/drivers/df_mpu6050_wrapper
+	platforms/posix/drivers/df_ak8963_wrapper
 
 	#
 	# System commands
@@ -36,10 +37,8 @@ set(config_module_list
 	systemcmds/perf
 
 	#
-	# Estimation modules (EKF/ SO3 / other filters)
+	# Estimation modules
 	#
-	#modules/attitude_estimator_ekf
-	modules/ekf_att_pos_estimator
 	modules/attitude_estimator_q
 	modules/position_estimator_inav
 	modules/local_position_estimator
@@ -101,4 +100,5 @@ set(config_module_list
 set(config_df_driver_list
 	ms5607
 	mpu6050
+	ak8963
 )
