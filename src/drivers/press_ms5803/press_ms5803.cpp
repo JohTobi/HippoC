@@ -34,7 +34,7 @@
 /**
  * @file press_ms5803.cpp
  *
- * Driver for a pressure sensor connected via I2C.
+ * Driver for ms5803 pressure sensor connected via I2C.
  *
  * @author Eugen Solowjow <eugen.solowjow@gmail.com>
  */
@@ -99,7 +99,7 @@ extern "C" __EXPORT int press_ms5803_main(int argc, char *argv[]);
 
 /* Configuration Constants */
 #define PCA9685_BUS PX4_I2C_BUS_EXPANSION
-#define PRESS_MS5803_ADDR 	0x76 /* 7-bit address of sensor */
+#define PRESS_MS5803_ADDR 	0x76 /* 7-bit address of sensor, cf data sheet */
 #define PRESS_MS5803_DEVICE_PATH	"/dev/press_ms5803"
 
 
@@ -109,10 +109,10 @@ public:
 	/**
 	 * Constructor
 	 */
-	PRESS_MS5803();
+	PRESS_MS5803(int bus = PX4_I2C_BUS_EXPANSION, uint16_t press_ms5803_addr = PRESS_MS5803_ADDR);
 
 	/**
-	 * Destructor, also kills the main task
+	 * Destructor
 	 */
 	virtual ~PRESS_MS5803();
 
@@ -142,8 +142,8 @@ namespace
 	PRESS_MS5803 *g_press_ms5803;	/// device handle
 }
 
-PRESS_MS5803::PRESS_MS5803() :
-	I2C("press_ms5803", BATT_SMBUS0_DEVICE_PATH, bus, batt_smbus_addr, 100000)
+PRESS_MS5803::PRESS_MS5803(int bus, uint16_t press_ms5803_addr) :
+	I2C("press_ms5803", PRESS_MS5803_DEVICE_PATH, bus, press_ms5803_addr, 100000)
 
 
 PRESS_MS5803::~PRESS_MS5803()
@@ -171,7 +171,6 @@ PRESS_MS5803::stop()
 int
 press_ms5803_main(int argc, char *argv[])
 {
-
 
 	const char *verb = argv[optind];
 
@@ -202,8 +201,6 @@ press_ms5803_main(int argc, char *argv[])
 		press_ms5803_usage();
 		exit(1);
 	}
-
-
 
 	if (!strcmp(verb, "stop")) {
 		delete g_press_ms5803;
