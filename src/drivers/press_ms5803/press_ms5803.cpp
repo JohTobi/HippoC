@@ -144,7 +144,8 @@ namespace
 
 PRESS_MS5803::PRESS_MS5803(int bus, uint16_t press_ms5803_addr) :
 	I2C("press_ms5803", PRESS_MS5803_DEVICE_PATH, bus, press_ms5803_addr, 100000)
-
+{
+}
 
 PRESS_MS5803::~PRESS_MS5803()
 {
@@ -155,6 +156,7 @@ PRESS_MS5803::~PRESS_MS5803()
 int
 PRESS_MS5803::init()
 {
+	return OK;
 }
 
 void
@@ -198,7 +200,6 @@ press_ms5803_main(int argc, char *argv[])
 
 	if (g_press_ms5803 == nullptr) {
 		warnx("not started");
-		press_ms5803_usage();
 		exit(1);
 	}
 
@@ -208,6 +209,5 @@ press_ms5803_main(int argc, char *argv[])
 		exit(0);
 	}
 
-	press_ms5803_usage();
 	exit(0);
 }
