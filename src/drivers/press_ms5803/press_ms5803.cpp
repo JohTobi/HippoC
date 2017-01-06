@@ -68,6 +68,7 @@
 
 #include <uORB/uORB.h>
 #include <uORB/topics/subsystem_info.h>
+#include <uORB/topics/pressure.h>
 
 #include <float.h>
 
@@ -135,6 +136,33 @@ private:
 	 * Stop periodic reads from the sensor
 	 */
 	void			stop();
+
+	/**
+ 	* static function that is called by worker queue
+ 	*/
+	static void		cycle_trampoline(void *arg);
+
+	/**
+	 * perform a read from the pressure sensor
+	 */
+	void			cycle();
+
+	/**
+	 * Read a word from specified register
+	 */
+	int			read_reg(uint8_t reg, uint16_t &val);
+
+	/**
+	 * Write a word to specified register
+	 */
+	int			write_reg(uint8_t reg, uint16_t val);
+
+	// internal variables
+	work_s					_work;		///< work queue for scheduling reads
+	orb_advert_t		_press_topic;	///< uORB pressure topic
+	orb_id_t				_press_orb_id;	///< uORB pressure topic ID
+	float						_pressure_value;	///< pressure in bar (-1 means unknown)
+	float						_temperature_value;	///< temperature in C
 };
 
 namespace
@@ -143,30 +171,78 @@ namespace
 }
 
 PRESS_MS5803::PRESS_MS5803(int bus, uint16_t press_ms5803_addr) :
-	I2C("press_ms5803", PRESS_MS5803_DEVICE_PATH, bus, press_ms5803_addr, 100000)
+	I2C("press_ms5803", PRESS_MS5803_DEVICE_PATH, bus, press_ms5803_addr, 100000),
+	_work{},
+	_press_topic(nullptr),
+	_press_orb_id(nullptr),
+	_pressure_value(0.0f),
+	_temperature_value(0.0f)
+
 {
+	memset(&_work, 0, sizeof(_work));
 }
 
 PRESS_MS5803::~PRESS_MS5803()
 {
-	stop();
 	g_press_ms5803 = nullptr;
 }
 
 int
 PRESS_MS5803::init()
 {
-	return OK;
+	int ret = ENOTTY;
+	ret = I2C::init();
+
+	if (ret != OK) {
+			errx(1, "failed to init I2C");
+			return ret;
+	} else {
+			start();
+	}
+
+	// init orb id
+	_press_orb_id = ORB_ID(pressure);
+
+	return ret;
 }
 
 void
 PRESS_MS5803::start()
 {
+// schedule a cycle to start measurements
+work_queue(HPWORK, &_work, (worker_t)&PRESS_MS5803::cycle_trampoline, this, 1);
 }
 
 void
 PRESS_MS5803::stop()
 {
+	work_cancel(HPWORK, &_work);
+}
+
+void
+PRESS_MS5803::cycle_trampoline(void *arg)
+{
+	PRESS_MS5803 *dev = (PRESS_MS5803 *)arg;
+
+	dev->cycle();
+}
+
+void
+PRESS_MS5803::cycle()
+{
+
+}
+
+int
+PRESS_MS5803::read_reg(uint8_t reg, uint16_t &val)
+{
+	return OK;
+}
+
+int
+PRESS_MS5803::write_reg(uint8_t reg, uint16_t val)
+{
+	return OK;
 }
 
 
