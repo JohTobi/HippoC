@@ -102,6 +102,7 @@ extern "C" __EXPORT int press_ms5803_main(int argc, char *argv[]);
 #define PCA9685_BUS PX4_I2C_BUS_EXPANSION
 #define PRESS_MS5803_ADDR 	0x76 /* 7-bit address of sensor, cf data sheet */
 #define PRESS_MS5803_DEVICE_PATH	"/dev/press_ms5803"
+#define PRESS_MS5803_MEASUREMENT_INTERVAL_US	(1000000 / 20)	///< time in microseconds, measure at 20Hz
 
 
 class PRESS_MS5803 : public device::I2C
@@ -142,27 +143,35 @@ private:
  	*/
 	static void		cycle_trampoline(void *arg);
 
+		/**
+	 	* load all calibration coefficients
+	 	*/
+	void loadCoefs();
+
 	/**
-	 * perform a read from the pressure sensor
+	 * perform a read from the pressure sensor and publish measurements
 	 */
 	void			cycle();
 
 	/**
-	 * Read a word from specified register
+	 * compute pressure and temperature values
 	 */
-	int			read_reg(uint8_t reg, uint16_t &val);
+	void			calcPT();
 
 	/**
-	 * Write a word to specified register
+	 * Perform ADC conversion
 	 */
-	int			write_reg(uint8_t reg, uint16_t val);
+	 uint32_t		cmd_adc(uint8_t cmd);
+
+
 
 	// internal variables
 	work_s					_work;		///< work queue for scheduling reads
 	orb_advert_t		_press_topic;	///< uORB pressure topic
 	orb_id_t				_press_orb_id;	///< uORB pressure topic ID
-	float						_pressure_value;	///< pressure in bar (-1 means unknown)
-	float						_temperature_value;	///< temperature in C
+	double						_pressure_value;	///< pressure in bar (-1 means unknown)
+	double						_temperature_value;	///< temperature in C
+	uint32_t 				C[8];                  //coefficient storage
 };
 
 namespace
@@ -209,6 +218,7 @@ PRESS_MS5803::init()
 void
 PRESS_MS5803::start()
 {
+loadCoefs();
 // schedule a cycle to start measurements
 work_queue(HPWORK, &_work, (worker_t)&PRESS_MS5803::cycle_trampoline, this, 1);
 }
@@ -228,21 +238,101 @@ PRESS_MS5803::cycle_trampoline(void *arg)
 }
 
 void
+PRESS_MS5803::loadCoefs() //hardcoded for now. TODO: Read from sensor on start
+{
+	C[0] = 0x3132;
+	C[1] = 0x3334;
+	C[2] = 0x3536;
+	C[3] = 0x3738;
+	C[4] = 0x3940;
+	C[5] = 0x4142;
+	C[6] = 0x4344;
+	C[7] = 0x4546;
+}
+
+void
 PRESS_MS5803::cycle()
 {
+	// calculate pressure and temperature from i2c sensor
+	calcPT();
+
+	// publish to orb
+	struct
+	{
+		double pressure_mbar;
+		double temperature_degC;
+	} newreport;
+
+	newreport.pressure_mbar = _pressure_value;
+	newreport.temperature_degC = _temperature_value;
+
+	orb_publish(_press_orb_id, _press_topic, &newreport);
+
+	// notify anyone waiting for data
+	poll_notify(POLLIN);
+
+	// schedule a fresh cycle call when the measurement is done
+	work_queue(HPWORK, &_work, (worker_t)&PRESS_MS5803::cycle_trampoline, this,
+		 USEC2TICK(PRESS_MS5803_MEASUREMENT_INTERVAL_US));
 
 }
 
-int
-PRESS_MS5803::read_reg(uint8_t reg, uint16_t &val)
+void
+PRESS_MS5803::calcPT()
 {
-	return OK;
+	// read data from sensor
+  uint32_t D1 = cmd_adc(CMD_ADC_D1 + CMD_ADC_256);
+	uint32_t D2 = cmd_adc(CMD_ADC_D2 + CMD_ADC_256);
+
+  // Computation according to manufacturer
+	int64_t dT = D2 - ((uint64_t)C[5] << 8);
+	int64_t OFF  = ((uint32_t)C[2] << 16) + ((dT * (C[4]) >> 7));
+	int64_t SENS = ((uint32_t)C[1] << 15) + ((dT * (C[3]) >> 8));
+
+	_temperature_value = (2000 + (((uint64_t)dT * C[6]) / (float)(1 << 23))) / 100;
+	int32_t TEMP = 2000 + (int64_t)dT * (int64_t)C[6] / (int64_t)(1 << 23);
+
+	if(TEMP < 2000) { // if temperature lower than 20 Celsius
+        float T1 = (TEMP - 2000) * (TEMP - 2000);
+        int64_t OFF1  = (5 * T1) / 2;
+        int64_t SENS1 = (5 * T1) / 4;
+
+        if(TEMP < -1500) { // if temperature lower than -15 Celsius
+            T1 = (TEMP + 1500) * (TEMP + 1500);
+            OFF1  += 7 * T1;
+            SENS1 += 11 * T1 / 2;
+        }
+        OFF -= OFF1;
+        SENS -= SENS1;
+        _temperature_value = (float)TEMP / 100;
+    }
+
+		_pressure_value = ((((int64_t)D1 * SENS ) >> 21) - OFF) / (double) (1 << 15) / 100.0;
 }
 
-int
-PRESS_MS5803::write_reg(uint8_t reg, uint16_t val)
+uint32_t
+PRESS_MS5803::cmd_adc(uint8_t cmd)
 {
-	return OK;
+	uint8_t ret = 0;
+	uint32_t tmp = 0;
+
+	uint8_t cmd_tmp1 = CMD_ADC_CONV + cmd;
+	transfer(&cmd_tmp1, 1, nullptr, 0);
+
+	usleep(700);
+
+	uint8_t cmd_tmp2 = CMD_ADC_READ;
+	transfer(&cmd_tmp2, 1, nullptr, 0);
+
+	uint8_t cmd_tmp3 = 0x00;
+	transfer(&cmd_tmp3, 1, &ret, 1);
+	tmp = 65536 * ret;
+	transfer(&cmd_tmp3, 1, &ret, 1);
+	tmp = tmp + 256 * ret;
+	transfer(&cmd_tmp3, 1, &ret, 1);
+	tmp = tmp + ret;
+
+return tmp;
 }
 
 
