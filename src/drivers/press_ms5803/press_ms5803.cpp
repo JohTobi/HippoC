@@ -100,7 +100,7 @@ extern "C" __EXPORT int press_ms5803_main(int argc, char *argv[]);
 
 /* Configuration Constants */
 #define PCA9685_BUS PX4_I2C_BUS_EXPANSION
-#define PRESS_MS5803_ADDR 	0x76 /* 7-bit address of sensor, cf data sheet */
+#define PRESS_MS5803_ADDR 	0x77 /* 7-bit address of sensor. For 0x77 set CSB pin to low, cf data sheet */
 #define PRESS_MS5803_DEVICE_PATH	"/dev/press_ms5803"
 #define PRESS_MS5803_MEASUREMENT_INTERVAL_US	(1000000 / 20)	///< time in microseconds, measure at 20Hz
 
@@ -146,7 +146,7 @@ private:
 		/**
 	 	* load all calibration coefficients
 	 	*/
-	void loadCoefs();
+	void 		loadCoefs();
 
 	/**
 	 * perform a read from the pressure sensor and publish measurements
@@ -163,7 +163,10 @@ private:
 	 */
 	 uint32_t		cmd_adc(uint8_t cmd);
 
-
+	 /**
+ 	 * Read pressure computation coeffecients from PROM
+ 	 */
+	 uint16_t	 	read_prom(int i);
 
 	// internal variables
 	work_s					_work;		///< work queue for scheduling reads
@@ -199,6 +202,11 @@ PRESS_MS5803::~PRESS_MS5803()
 int
 PRESS_MS5803::init()
 {
+
+	// init orb id
+	_press_orb_id = ORB_ID(pressure);
+
+	//initialise I2C bus
 	int ret = ENOTTY;
 	ret = I2C::init();
 
@@ -208,9 +216,6 @@ PRESS_MS5803::init()
 	} else {
 			start();
 	}
-
-	// init orb id
-	_press_orb_id = ORB_ID(pressure);
 
 	return ret;
 }
@@ -238,16 +243,13 @@ PRESS_MS5803::cycle_trampoline(void *arg)
 }
 
 void
-PRESS_MS5803::loadCoefs() //hardcoded for now. TODO: Read from sensor on start
+PRESS_MS5803::loadCoefs() //Read from sensor on start
 {
-	C[0] = 0x3132;
-	C[1] = 0x3334;
-	C[2] = 0x3536;
-	C[3] = 0x3738;
-	C[4] = 0x3940;
-	C[5] = 0x4142;
-	C[6] = 0x4344;
-	C[7] = 0x4546;
+	for (int i = 0; i < 8; i++){
+			usleep(50000);  //Wait 50ms
+			C[i] = read_prom(i);
+	}
+
 }
 
 void
@@ -313,26 +315,37 @@ PRESS_MS5803::calcPT()
 uint32_t
 PRESS_MS5803::cmd_adc(uint8_t cmd)
 {
-	uint8_t ret = 0;
-	uint32_t tmp = 0;
+	uint8_t buf[3] = {0, 0, 0};
 
-	uint8_t cmd_tmp1 = CMD_ADC_CONV + cmd;
-	transfer(&cmd_tmp1, 1, nullptr, 0);
+	// initiate pressure conversion
+	{
+	uint8_t cmd_temp = CMD_ADC_CONV + cmd;
+	transfer(&cmd_temp, 1, nullptr, 0);
+	}
 
 	usleep(700);
 
-	uint8_t cmd_tmp2 = CMD_ADC_READ;
-	transfer(&cmd_tmp2, 1, nullptr, 0);
+	// read sequence
+	uint8_t cmd_temp = CMD_ADC_READ;
+	transfer(&cmd_temp, 1, &buf[0], 3);
 
-	uint8_t cmd_tmp3 = 0x00;
-	transfer(&cmd_tmp3, 1, &ret, 1);
-	tmp = 65536 * ret;
-	transfer(&cmd_tmp3, 1, &ret, 1);
-	tmp = tmp + 256 * ret;
-	transfer(&cmd_tmp3, 1, &ret, 1);
-	tmp = tmp + ret;
+	uint32_t val = (buf[0] << 16) + (buf[1] << 8) + buf[2];
 
-return tmp;
+	return val;
+}
+
+uint16_t
+PRESS_MS5803::read_prom(int coef_num)
+{
+	uint8_t buf[2] = {0, 0};
+
+// send PROM READ command
+	uint8_t cmd_temp = CMD_PROM_RD + coef_num * 2;
+	transfer(&cmd_temp, 1, &buf[0], 2);
+
+	uint16_t val = (buf[0] << 8) + buf[1];
+
+	return val;
 }
 
 
