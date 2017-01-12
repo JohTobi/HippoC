@@ -84,8 +84,6 @@
 extern "C" __EXPORT int press_ms5803_main(int argc, char *argv[]);
 
 
-#define TRUE 1
-#define FALSE 0
 #define CMD_RESET 0x1E //ADC reset command (ADC = Analog-Digital-Converter)
 #define CMD_ADC_READ 0x00 //ADC read command
 #define CMD_ADC_CONV 0x40 //ADC conversion command
@@ -146,7 +144,7 @@ private:
 		/**
 	 	* load all calibration coefficients
 	 	*/
-	void 		loadCoefs();
+	void 			loadCoefs();
 
 	/**
 	 * perform a read from the pressure sensor and publish measurements
@@ -169,12 +167,12 @@ private:
 	 uint16_t	 	read_prom(int i);
 
 	// internal variables
-	work_s					_work;		///< work queue for scheduling reads
-	orb_advert_t		_press_topic;	///< uORB pressure topic
-	orb_id_t				_press_orb_id;	///< uORB pressure topic ID
+	work_s						_work;		///< work queue for scheduling reads
+	orb_advert_t			_press_topic;	///< uORB pressure topic
+	orb_id_t					_press_orb_id;	///< uORB pressure topic ID
 	double						_pressure_value;	///< pressure in bar (-1 means unknown)
 	double						_temperature_value;	///< temperature in C
-	uint32_t 				C[8];                  //coefficient storage
+	uint32_t 					C[8];                  //coefficient storage
 };
 
 namespace
@@ -339,7 +337,7 @@ PRESS_MS5803::read_prom(int coef_num)
 {
 	uint8_t buf[2] = {0, 0};
 
-// send PROM READ command
+	// send PROM READ command
 	uint8_t cmd_temp = CMD_PROM_RD + coef_num * 2;
 	transfer(&cmd_temp, 1, &buf[0], 2);
 
