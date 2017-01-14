@@ -244,6 +244,7 @@ void
 PRESS_MS5803::loadCoefs() //Read from sensor on start
 {
 	for (int i = 0; i < 8; i++){
+			C[i] = 0;
 			usleep(50000);  //Wait 50ms
 			C[i] = read_prom(i);
 	}
