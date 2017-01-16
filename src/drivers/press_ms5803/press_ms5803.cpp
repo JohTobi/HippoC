@@ -56,6 +56,7 @@
 #include <unistd.h>
 #include <ctype.h>
 
+
 #include <nuttx/arch.h>
 #include <nuttx/wqueue.h>
 #include <nuttx/clock.h>
@@ -75,6 +76,10 @@
 #include <drivers/device/i2c.h>
 #include <drivers/drv_hrt.h>
 #include <drivers/device/ringbuffer.h>
+
+double T2;
+double OFF2;
+double SENS2;
 
 /**
  * Pressure sensor driver start / stop handling function
@@ -244,10 +249,11 @@ void
 PRESS_MS5803::loadCoefs() //Read from sensor on start
 {
 	for (int i = 0; i < 8; i++){
-			usleep(50000);  //Wait 50ms
+            C[i] = 0;
+        usleep(50000);  //Wait 50ms
 			C[i] = read_prom(i);
 	}
-
+   /* warnx("C3 %f", C[3]);*/
 }
 
 void
@@ -266,6 +272,13 @@ PRESS_MS5803::cycle()
 	newreport.pressure_mbar = _pressure_value;
 	newreport.temperature_degC = _temperature_value;
 
+
+   /*  warnx("Pressure %f", _pressure_value);
+    warnx("Temperature %f", _temperature_value); */
+
+
+   /* warnx("C3 %f", C[3]); */
+
 	orb_publish(_press_orb_id, _press_topic, &newreport);
 
 	// notify anyone waiting for data
@@ -281,8 +294,11 @@ void
 PRESS_MS5803::calcPT()
 {
 	// read data from sensor
-  uint32_t D1 = cmd_adc(CMD_ADC_D1 + CMD_ADC_256);
+    uint32_t D1 = cmd_adc(CMD_ADC_D1 + CMD_ADC_256);
 	uint32_t D2 = cmd_adc(CMD_ADC_D2 + CMD_ADC_256);
+    /* warnx("D1 %f", D1);
+      warnx("D2 %f", D2); */
+
 
   // Computation according to manufacturer
 	int64_t dT = D2 - ((uint64_t)C[5] << 8);
@@ -306,7 +322,6 @@ PRESS_MS5803::calcPT()
         SENS -= SENS1;
         _temperature_value = (float)TEMP / 100;
     }
-
 		_pressure_value = ((((int64_t)D1 * SENS ) >> 21) - OFF) / (double) (1 << 15) / 100.0;
 }
 
