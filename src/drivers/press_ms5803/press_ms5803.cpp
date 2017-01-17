@@ -67,7 +67,6 @@
 #include <systemlib/systemlib.h>
 
 #include <uORB/uORB.h>
-#include <uORB/topics/subsystem_info.h>
 #include <uORB/topics/pressure.h>
 
 #include <float.h>
@@ -204,6 +203,8 @@ PRESS_MS5803::init()
 	// init orb id
 	_press_orb_id = ORB_ID(pressure);
 
+	orb_subscribe(ORB_ID(pressure));
+
 	//initialise I2C bus
 	int ret = ENOTTY;
 	ret = I2C::init();
@@ -260,12 +261,15 @@ PRESS_MS5803::cycle()
 	// publish to orb
 	struct
 	{
-		double pressure_mbar;
-		double temperature_degC;
+		float32 pressure_mbar;
+		float32 temperature_degC;
+		uint64_t now;
 	} newreport;
 
-	newreport.pressure_mbar = _pressure_value;
-	newreport.temperature_degC = _temperature_value;
+	newreport.now = hrt_absolute_time();
+	newreport.pressure_mbar = (float32)_pressure_value;
+	newreport.temperature_degC = (float32)_temperature_value;
+	_press_topic = orb_advertise(_press_orb_id, &newreport);
 
 	orb_publish(_press_orb_id, _press_topic, &newreport);
 
