@@ -176,6 +176,8 @@ private:
 	double						_temperature_value;	///< temperature in C
     uint32_t 					C[8];                  //coefficient storage
 
+    struct pressure_s pressure;
+    bool _collect_phase;
 
 
 };
@@ -191,7 +193,8 @@ PRESS_MS5803::PRESS_MS5803(int bus, uint16_t press_ms5803_addr) :
 	_press_topic(nullptr),
 	_press_orb_id(nullptr),
 	_pressure_value(0.0f),
-    _temperature_value(0.0f)
+    _temperature_value(0.0f),
+    _collect_phase(false)
 
 
 
@@ -229,6 +232,8 @@ PRESS_MS5803::init()
 void
 PRESS_MS5803::start()
 {
+    _collect_phase = false;
+
 loadCoefs();
 // schedule a cycle to start measurements
 work_queue(HPWORK, &_work, (worker_t)&PRESS_MS5803::cycle_trampoline, this, 1);
@@ -268,24 +273,38 @@ PRESS_MS5803::cycle()
 	calcPT();
 
 	// publish to orb
-	struct
+
+    /*
+     * struct
 	{
 		float32 pressure_mbar;
 		float32 temperature_degC;
 		uint64_t now;
-	} newreport;
+    } newreport;
 
-	newreport.now = hrt_absolute_time();
-	newreport.pressure_mbar = (float32)_pressure_value;
-	newreport.temperature_degC = (float32)_temperature_value;
-	_press_topic = orb_advertise(_press_orb_id, &newreport);
+    newreport.now = hrt_absolute_time();
+    newreport.pressure_mbar = (float32)_pressure_value;
+    newreport.temperature_degC = (float32)_temperature_value; */
+
+    // pressure.now = hrt_absolute_time();
+    pressure.pressure_mbar = (float32)_pressure_value;
+    pressure.temperature_degC = (float32)_temperature_value;
 
 
-     warnx("Pressure %f", _pressure_value);
-    warnx("Temperature %f", _temperature_value);
+    /*warnx("Pressure %f", _pressure_value);
+    warnx("Temperature %f", _temperature_value);*/
     /* warnx("C3 %f", C[3]); */
 
-	orb_publish(_press_orb_id, _press_topic, &newreport);
+
+   /*  _press_topic = orb_advertise(_press_orb_id, &newreport); */
+   /*  orb_publish(_press_orb_id, _press_topic, &newreport); */
+
+    if (_press_topic != nullptr) {
+        orb_publish(_press_orb_id, _press_topic, &pressure);
+    } else {
+        _press_topic = orb_advertise(_press_orb_id,&pressure);
+    }
+
 
 	// notify anyone waiting for data
 	poll_notify(POLLIN);
