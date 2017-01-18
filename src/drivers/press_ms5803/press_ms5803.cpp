@@ -171,7 +171,7 @@ private:
 	// internal variables
 	work_s						_work;		///< work queue for scheduling reads
 	orb_advert_t			_press_topic;	///< uORB pressure topic
-	orb_id_t					_press_orb_id;	///< uORB pressure topic ID
+    // orb_id_t					_press_orb_id;	///< uORB pressure topic ID
 	double						_pressure_value;	///< pressure in bar (-1 means unknown)
 	double						_temperature_value;	///< temperature in C
     uint32_t 					C[8];                  //coefficient storage
@@ -191,7 +191,7 @@ PRESS_MS5803::PRESS_MS5803(int bus, uint16_t press_ms5803_addr) :
 	I2C("press_ms5803", PRESS_MS5803_DEVICE_PATH, bus, press_ms5803_addr, 100000),
 	_work{},
 	_press_topic(nullptr),
-	_press_orb_id(nullptr),
+    // _press_orb_id(nullptr),
 	_pressure_value(0.0f),
     _temperature_value(0.0f),
     _collect_phase(false)
@@ -211,8 +211,7 @@ int
 PRESS_MS5803::init()
 {
 	// init orb id
-	_press_orb_id = ORB_ID(pressure);
-
+    // _press_orb_id = ORB_ID(pressure);
 	orb_subscribe(ORB_ID(pressure));
 
 	//initialise I2C bus
@@ -273,38 +272,14 @@ PRESS_MS5803::cycle()
 	calcPT();
 
 	// publish to orb
-
-    /*
-     * struct
-	{
-		float32 pressure_mbar;
-		float32 temperature_degC;
-		uint64_t now;
-    } newreport;
-
-    newreport.now = hrt_absolute_time();
-    newreport.pressure_mbar = (float32)_pressure_value;
-    newreport.temperature_degC = (float32)_temperature_value; */
-
-    // pressure.now = hrt_absolute_time();
     pressure.pressure_mbar = (float32)_pressure_value;
     pressure.temperature_degC = (float32)_temperature_value;
 
-
-    /*warnx("Pressure %f", _pressure_value);
-    warnx("Temperature %f", _temperature_value);*/
-    /* warnx("C3 %f", C[3]); */
-
-
-   /*  _press_topic = orb_advertise(_press_orb_id, &newreport); */
-   /*  orb_publish(_press_orb_id, _press_topic, &newreport); */
-
     if (_press_topic != nullptr) {
-        orb_publish(_press_orb_id, _press_topic, &pressure);
+        orb_publish(ORB_ID(pressure), _press_topic, &pressure);
     } else {
-        _press_topic = orb_advertise(_press_orb_id,&pressure);
+        _press_topic = orb_advertise(ORB_ID(pressure),&pressure);
     }
-
 
 	// notify anyone waiting for data
 	poll_notify(POLLIN);
