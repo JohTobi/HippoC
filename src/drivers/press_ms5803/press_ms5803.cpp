@@ -56,6 +56,7 @@
 #include <unistd.h>
 #include <ctype.h>
 
+
 #include <nuttx/arch.h>
 #include <nuttx/wqueue.h>
 #include <nuttx/clock.h>
@@ -74,6 +75,8 @@
 #include <drivers/device/i2c.h>
 #include <drivers/drv_hrt.h>
 #include <drivers/device/ringbuffer.h>
+
+
 
 /**
  * Pressure sensor driver start / stop handling function
@@ -168,10 +171,15 @@ private:
 	// internal variables
 	work_s						_work;		///< work queue for scheduling reads
 	orb_advert_t			_press_topic;	///< uORB pressure topic
-	orb_id_t					_press_orb_id;	///< uORB pressure topic ID
+    // orb_id_t					_press_orb_id;	///< uORB pressure topic ID
 	double						_pressure_value;	///< pressure in bar (-1 means unknown)
 	double						_temperature_value;	///< temperature in C
-	uint32_t 					C[8];                  //coefficient storage
+    uint32_t 					C[8];                  //coefficient storage
+
+    struct pressure_s pressure;
+    bool _collect_phase;
+
+
 };
 
 namespace
@@ -183,9 +191,12 @@ PRESS_MS5803::PRESS_MS5803(int bus, uint16_t press_ms5803_addr) :
 	I2C("press_ms5803", PRESS_MS5803_DEVICE_PATH, bus, press_ms5803_addr, 100000),
 	_work{},
 	_press_topic(nullptr),
-	_press_orb_id(nullptr),
+    // _press_orb_id(nullptr),
 	_pressure_value(0.0f),
-	_temperature_value(0.0f)
+    _temperature_value(0.0f),
+    _collect_phase(false)
+
+
 
 {
 	memset(&_work, 0, sizeof(_work));
@@ -199,10 +210,8 @@ PRESS_MS5803::~PRESS_MS5803()
 int
 PRESS_MS5803::init()
 {
-
 	// init orb id
-	_press_orb_id = ORB_ID(pressure);
-
+    // _press_orb_id = ORB_ID(pressure);
 	orb_subscribe(ORB_ID(pressure));
 
 	//initialise I2C bus
@@ -216,12 +225,14 @@ PRESS_MS5803::init()
 			start();
 	}
 
-	return ret;
+    return ret;
 }
 
 void
 PRESS_MS5803::start()
 {
+    _collect_phase = false;
+
 loadCoefs();
 // schedule a cycle to start measurements
 work_queue(HPWORK, &_work, (worker_t)&PRESS_MS5803::cycle_trampoline, this, 1);
@@ -245,11 +256,13 @@ void
 PRESS_MS5803::loadCoefs() //Read from sensor on start
 {
 	for (int i = 0; i < 8; i++){
-			C[i] = 0;
-			usleep(50000);  //Wait 50ms
+
+            C[i] = 0;
+            usleep(50000);  //Wait 50ms
+
 			C[i] = read_prom(i);
 	}
-
+   /* warnx("C3 %f", C[3]); */
 }
 
 void
@@ -259,19 +272,14 @@ PRESS_MS5803::cycle()
 	calcPT();
 
 	// publish to orb
-	struct
-	{
-		float32 pressure_mbar;
-		float32 temperature_degC;
-		uint64_t now;
-	} newreport;
+    pressure.pressure_mbar = (float32)_pressure_value;
+    pressure.temperature_degC = (float32)_temperature_value;
 
-	newreport.now = hrt_absolute_time();
-	newreport.pressure_mbar = (float32)_pressure_value;
-	newreport.temperature_degC = (float32)_temperature_value;
-	_press_topic = orb_advertise(_press_orb_id, &newreport);
-
-	orb_publish(_press_orb_id, _press_topic, &newreport);
+    if (_press_topic != nullptr) {
+        orb_publish(ORB_ID(pressure), _press_topic, &pressure);
+    } else {
+        _press_topic = orb_advertise(ORB_ID(pressure),&pressure);
+    }
 
 	// notify anyone waiting for data
 	poll_notify(POLLIN);
@@ -286,8 +294,11 @@ void
 PRESS_MS5803::calcPT()
 {
 	// read data from sensor
-  uint32_t D1 = cmd_adc(CMD_ADC_D1 + CMD_ADC_256);
-	uint32_t D2 = cmd_adc(CMD_ADC_D2 + CMD_ADC_256);
+    uint32_t D1 = cmd_adc(CMD_ADC_D1 + CMD_ADC_256);
+    uint32_t D2 = cmd_adc(CMD_ADC_D2 + CMD_ADC_256);
+   /*  warnx("D1 %f", D1);
+      warnx("D2 %f", D2); */
+
 
   // Computation according to manufacturer
 	int64_t dT = D2 - ((uint64_t)C[5] << 8);
@@ -311,7 +322,6 @@ PRESS_MS5803::calcPT()
         SENS -= SENS1;
         _temperature_value = (float)TEMP / 100;
     }
-
 		_pressure_value = ((((int64_t)D1 * SENS ) >> 21) - OFF) / (double) (1 << 15) / 100.0;
 }
 
