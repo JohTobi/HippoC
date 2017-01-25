@@ -35,9 +35,9 @@
 /**
  * @file water_depth_control_params.c
  *
- * Parameters for Keep Water Depth
+ * Parameters for Water Depth Control
  *
  */
-
+//PARAM_DEFINE_INT32(UW_DEPTH_CONTROL_MODE, 0);
 
 
