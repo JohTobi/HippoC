@@ -331,26 +331,34 @@ void WaterDepthControl::control_attitude()
 
     _pressure_sub = orb_subscribe(ORB_ID(pressure));
 
-    px4_pollfd_struct_t fds[1];
+//    px4_pollfd_struct_t fds[1];
 
-    fds[0].fd = _pressure_sub;
-    fds[0].events = POLLIN;
+ //   fds[0].fd = _pressure_sub;
+//    fds[0].events = POLLIN;
 
-       int error_counter = 0;
+//       int error_counter = 0;
 
+       struct pressure_s press;
 
-       for (int i = 0; i < 2; i++) {
+       orb_copy(ORB_ID(pressure), _pressure_sub, &press);
+       PX4_INFO("Pressure: %8.4f",
+                (double)press.pressure_mbar);
+
+/*
+       for (int i = 0; i < 1; i++) {
            int poll_ret = px4_poll(fds, 1, 1000);
 
            if (poll_ret == 0) {
-                      /* this means none of our providers is giving us data */
-                      PX4_ERR("Got no data within a second");
+*/
+       /* this means none of our providers is giving us data */
+/*                      PX4_ERR("Got no data within a second");
 
            } else if (poll_ret < 0) {
-                      /* this is seriously bad - should be an emergency */
-                  if (error_counter < 10 || error_counter % 50 == 0) {
-                          /* use a counter to prevent flooding (and slowing us down) */
-                          PX4_ERR("ERROR return value from poll(): %d", poll_ret);
+*/
+ /* this is seriously bad - should be an emergency */
+/*                  if (error_counter < 10 || error_counter % 50 == 0) {
+ */                         /* use a counter to prevent flooding (and slowing us down) */
+/*                          PX4_ERR("ERROR return value from poll(): %d", poll_ret);
                   }
 
                   error_counter++;
@@ -360,15 +368,17 @@ void WaterDepthControl::control_attitude()
                struct pressure_s press;
 
                orb_copy(ORB_ID(pressure), _pressure_sub, &press);
-               PX4_INFO("Pressure: %8.4f\t Temperature: %8.4f",
-                        (double)press.pressure_mbar,
-                        (double)press.temperature_degC);
+               PX4_INFO("Pressure: %8.4f",
+                        (double)press.pressure_mbar);
+           }
+           }
 
-           }
-           }
        }
-
+*/
+       usleep(100000);
        PX4_INFO("exiting");
+
+
 
     //PX4_INFO("Output water_depth_control!");
 /*
@@ -480,10 +490,12 @@ void WaterDepthControl::task_main()
             }
             */
 
+
          }
         if (counter>50){
             break;
         }
+
     }
 
 }
