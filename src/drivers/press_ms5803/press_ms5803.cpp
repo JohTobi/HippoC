@@ -83,6 +83,9 @@
  *
  * @ingroup apps
  */
+
+static const char commandline_usage[] = "usage: press_ms5803 start|status|stop";
+
 extern "C" __EXPORT int press_ms5803_main(int argc, char *argv[]);
 
 
@@ -201,6 +204,7 @@ PRESS_MS5803::PRESS_MS5803(int bus, uint16_t press_ms5803_addr) :
 {
 	memset(&_work, 0, sizeof(_work));
 }
+
 
 PRESS_MS5803::~PRESS_MS5803()
 {
@@ -366,26 +370,74 @@ int
 press_ms5803_main(int argc, char *argv[])
 {
 
-	const char *verb = argv[optind];
+    if (argc < 2) {
+            errx(1, "missing command\n%s", commandline_usage);
+        }
 
-	if (!strcmp(verb, "start")) {
-		if (g_press_ms5803 != nullptr) {
-			errx(1, "already started");
+        if (!strcmp(argv[1], "start")) {
 
-		} else {
+            if (g_press_ms5803) {
+                warnx("already running");
+                exit(0);
+            }
+
+            g_press_ms5803 = new PRESS_MS5803(PX4_I2C_BUS_EXPANSION);
+
+            if (g_press_ms5803 != nullptr && OK != g_press_ms5803->init()) {
+                delete g_press_ms5803;
+                g_press_ms5803 = nullptr;
+            }
+
+            exit(0);
+        }
+
+        if (!strcmp(argv[1], "stop")) {
+            if (!g_press_ms5803) {
+                warnx("not running");
+                exit(0);
+            }
+
+            delete g_press_ms5803;
+            g_press_ms5803 = nullptr;
+            warnx("stopped");
+
+            exit(0);
+        }
+
+        if (!strcmp(argv[1], "status")) {
+            if (g_press_ms5803) {
+                warnx("is running");
+
+            } else {
+                warnx("is not running");
+            }
+
+            exit(0);
+        }
+
+        errx(1, "unrecognized command\n%s", commandline_usage);
+
+/*
+    const char *verb = argv[optind];
+
+    if (!strcmp(verb, "start")) {
+        if (g_press_ms5803 != nullptr) {
+            errx(1, "already started");
+
+        } else {
 			// create new global object
-			g_press_ms5803 = new PRESS_MS5803();
+            g_press_ms5803 = new PRESS_MS5803();
 
-			if (g_press_ms5803 == nullptr) {
-				errx(1, "new failed");
-			}
+            if (g_press_ms5803 == nullptr) {
+                errx(1, "new failed");
+            }
 
-			if (OK != g_press_ms5803->init()) {
-				delete g_press_ms5803;
-				g_press_ms5803 = nullptr;
-				errx(1, "init failed");
-			}
-		}
+            if (OK != g_press_ms5803->init()) {
+                delete g_press_ms5803;
+                g_press_ms5803 = nullptr;
+                errx(1, "init failed");
+            }
+        }
 
 		exit(0);
 	}
@@ -402,4 +454,5 @@ press_ms5803_main(int argc, char *argv[])
 	}
 
 	exit(0);
+*/
 }
