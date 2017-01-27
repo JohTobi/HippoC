@@ -343,25 +343,25 @@ void WaterDepthControl::control_attitude()
             _pressure_set = 1030;
             _p_gain = 0.002;
 
-            PX4_INFO("Pressure: %8.4f",
-                     (double)press.pressure_mbar);
+         //   PX4_INFO("Pressure: %8.4f",
+         //            (double)press.pressure_mbar);
 
             //p-control
             //float pressure_err = _pressure_set - press.pressure_mbar;
             float pressure_err =  press.pressure_mbar - _pressure_set;
 
-            PX4_INFO("Pressure_err: %8.4f",
-                     (double)pressure_err);
+         //   PX4_INFO("Pressure_err: %8.4f",
+         //            (double)pressure_err);
 
             float control_depth = _p_gain * pressure_err;
 
-            PX4_INFO("Control_pitch: %8.4f",
-                     (double)control_depth);
+         //   PX4_INFO("Control_pitch: %8.4f",
+         //            (double)control_depth);
 
             //float control_pitch = (pitch_err * _params.pitch_p)*cr+((yaw_err) * _params.yaw_p)*sr;
 
-            _att_control(1) = control_depth;
-            _thrust_sp = _v_att_sp.thrust;
+
+            _thrust_sp = control_depth;
 
 
 
