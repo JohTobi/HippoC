@@ -76,7 +76,8 @@
  *
  * @ingroup apps
  */
-int     _pressure_raw;
+
+
 
 extern "C" __EXPORT int water_depth_control_main(int argc, char *argv[]);
 
@@ -94,10 +95,57 @@ public:
 
      int start();
 
+
 private:
 
-     bool   _task_should_exit;
-     int    _control_task;
+     bool       _task_should_exit;      /**< if true, task_main() should exit */
+     int        _control_task;          /**< task handle */
+     float      _thrust_sp;             /**< thrust setpoint */
+     int        _v_att_sp_sub;          /**< vehicle attitude setpoint subscription */
+     int        _pressure_raw;
+     float        _pressure_set;
+     int        _v_att_sub;             /**< vehicle attitude subscription */
+     int        _params_sub;            /**< parameter updates subscription */
+     float        _p_gain;
+
+     orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
+
+     struct vehicle_attitude_setpoint_s _v_att_sp;      /**< vehicle attitude setpoint */
+     struct actuator_controls_s			_actuators;			/**< actuator controls */
+     struct vehicle_attitude_s           _v_att;             /**< vehicle attitude */
+
+     perf_counter_t     _loop_perf;     /**< loop performance counter */
+     perf_counter_t     _controller_latency_perf;
+
+     math::Vector<3>    _att_control;   /**< attitude control vector */
+
+     struct {
+         param_t roll_p;
+         param_t pitch_p;
+         param_t yaw_p;
+
+         param_t roll_rate_p;
+         param_t pitch_rate_p;
+         param_t yaw_rate_p;
+
+         param_t control_mode;
+     }		_params_handles;		/**< handles for interesting parameters */
+
+     struct {
+         float roll_p;
+         float pitch_p;
+         float yaw_p;
+
+         float roll_rate_p;
+         float pitch_rate_p;
+         float yaw_rate_p;
+
+         int control_mode;
+     }		_params;
+
+
+     int   parameters_update();
+     void   parameter_update_poll();
 
 
      void task_main();
@@ -105,21 +153,54 @@ private:
      static void task_main_trampoline(int argc, char *argv[]);
 
      void control_attitude();
+
+     void vehicle_attitude_setpoint_poll();
 };
 
 namespace water_depth_control
 {
-
-WaterDepthControl	*g_control;
+    WaterDepthControl	*g_control;
 }
 
 //define Constructor
 WaterDepthControl::WaterDepthControl() :
 
     _task_should_exit(false),
-    _control_task(-1)
-{
+    _control_task(-1),
 
+    //subscriptions
+    _v_att_sub(-1),
+    _params_sub(-1),
+
+    // publications
+
+    _actuators_0_pub(nullptr),
+
+    /* performance counters */
+    _loop_perf(perf_alloc(PC_ELAPSED, "water_depth_control")),
+    _controller_latency_perf(perf_alloc_once(PC_ELAPSED, "ctrl_latency"))
+
+{
+    memset(&_v_att_sp, 0, sizeof(_v_att_sp));
+    memset(&_actuators, 0, sizeof(_actuators));
+    memset(&_v_att, 0, sizeof(_v_att));
+
+    _thrust_sp = 0.0f;
+    _att_control.zero();
+
+    _params_handles.roll_p			= 	param_find("UW_ROLL_P");
+    _params_handles.roll_rate_p		= 	param_find("UW_ROLL_RATE_P");
+
+    _params_handles.pitch_p			= 	param_find("UW_PITCH_P");
+    _params_handles.pitch_rate_p	= 	param_find("UW_PITCH_RATE_P");
+
+    _params_handles.yaw_p			= 	param_find("UW_YAW_P");
+    _params_handles.yaw_rate_p		= 	param_find("UW_YAW_RATE_P");
+
+    _params_handles.control_mode    =   param_find("UW_CONTROL_MODE");
+
+    /* fetch initial parameter values */
+    parameters_update();
 }
 
 //define Destructor
@@ -145,6 +226,38 @@ WaterDepthControl::~WaterDepthControl()
     }
 
     water_depth_control::g_control = nullptr;
+}
+
+int WaterDepthControl::parameters_update()
+{
+    param_get(_params_handles.roll_p, &(_params.roll_p));
+    param_get(_params_handles.roll_rate_p, &(_params.roll_rate_p));
+
+    param_get(_params_handles.pitch_p, &(_params.pitch_p));
+    param_get(_params_handles.pitch_rate_p, &(_params.pitch_rate_p));
+
+    param_get(_params_handles.yaw_p, &(_params.yaw_p));
+    param_get(_params_handles.yaw_rate_p, &(_params.yaw_rate_p));
+
+    param_get(_params_handles.control_mode, &(_params.control_mode));
+
+    return OK;
+}
+
+void WaterDepthControl::parameter_update_poll()
+{
+    bool updated;
+
+    /* Check if parameters have changed */
+    orb_check(_params_sub, &updated);
+
+    if (updated) {
+        /* read from param to clear updated flag (uORB API requirement) */
+        struct parameter_update_s param_update;
+        orb_copy(ORB_ID(parameter_update), _params_sub, &param_update);
+
+        parameters_update();
+    }
 }
 
 
@@ -174,9 +287,22 @@ void WaterDepthControl::task_main_trampoline(int argc, char *argv[])
     water_depth_control::g_control->task_main();
 }
 
+
+void WaterDepthControl::vehicle_attitude_setpoint_poll()
+{
+    /* check if there is a new rates setpoint */
+    bool updated;
+    orb_check(_v_att_sp_sub, &updated);
+
+    if (updated) {
+        orb_copy(ORB_ID(vehicle_attitude_setpoint), _v_att_sp_sub, &_v_att_sp);
+    }
+}
+
 //define Pressure Depth Control
 void WaterDepthControl::control_attitude()
 {
+/*
         px4_pollfd_struct_t fds[1];
         fds[0].fd = _pressure_raw;
         fds[0].events = POLLIN;
@@ -208,27 +334,111 @@ void WaterDepthControl::control_attitude()
                          (double)press.pressure_mbar);
             }
             }
-            usleep(100000);
+
+*/
+            struct pressure_s press;
+
+            orb_copy(ORB_ID(pressure), _pressure_raw, &press);
+
+            _pressure_set = 1030;
+            _p_gain = 0.002;
+
+            PX4_INFO("Pressure: %8.4f",
+                     (double)press.pressure_mbar);
+
+            //p-control
+            //float pressure_err = _pressure_set - press.pressure_mbar;
+            float pressure_err =  press.pressure_mbar - _pressure_set;
+
+            PX4_INFO("Pressure_err: %8.4f",
+                     (double)pressure_err);
+
+            float control_depth = _p_gain * pressure_err;
+
+            PX4_INFO("Control_pitch: %8.4f",
+                     (double)control_depth);
+
+            //float control_pitch = (pitch_err * _params.pitch_p)*cr+((yaw_err) * _params.yaw_p)*sr;
+
+            _att_control(1) = control_depth;
+            _thrust_sp = _v_att_sp.thrust;
+
+
+
+
+           usleep(1000000);
 }
 
 
 //main task
 void WaterDepthControl::task_main()
 {
+    //do subscriptions
+    _v_att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
     _pressure_raw = orb_subscribe(ORB_ID(pressure));
+    _params_sub = orb_subscribe(ORB_ID(parameter_update));
 
-    int counter = 0;
+    /* initialize parameters cache */
+   parameters_update();
+
+    /* advertise actuator controls */
+    _actuators_0_pub = orb_advertise(ORB_ID(actuator_controls_0), &_actuators);
+
+    px4_pollfd_struct_t fds[1];
+
+    fds[0].fd = _v_att_sub;
+    fds[0].events = POLLIN;
 
     while (!_task_should_exit) {
-        counter++;
-        control_attitude();
-        PX4_INFO("Counter: %8.4f",
-                 (double)counter);
 
-    if (counter>200){
-        break;
+        /* wait for up to 100ms for data */
+        int pret = px4_poll(&fds[0], (sizeof(fds) / sizeof(fds[0])), 100);
+
+        /* timed out - periodic check for _task_should_exit */
+        if (pret == 0) {
+            continue;
+        }
+
+        /* this is undesirable but not much we can do - might want to flag unhappy status */
+        if (pret < 0) {
+            warn("mc att ctrl: poll error %d, %d", pret, errno);
+            /* sleep a bit before next try */
+            usleep(100000);
+            continue;
+        }
+
+        perf_begin(_loop_perf);
+
+        /* run controller on attitude changes */
+        if (fds[0].revents & POLLIN) {
+
+            /* copy attitude and control state topics */
+            orb_copy(ORB_ID(vehicle_attitude), _v_att_sub, &_v_att);
+
+            /* check for updates in other topics */
+            parameter_update_poll();
+
+            //start controller
+            control_attitude();
+
+            /* publish actuator controls */
+            _actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
+            _actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f;
+            _actuators.control[2] = (PX4_ISFINITE(_att_control(2))) ? _att_control(2) : 0.0f;
+            _actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
+            _actuators.timestamp = hrt_absolute_time();
+            _actuators.timestamp_sample = _v_att.timestamp;
+
+            orb_publish(ORB_ID(actuator_controls_0), _actuators_0_pub, &_actuators);
+
+            perf_end(_controller_latency_perf);
+       }
+
+        perf_end(_loop_perf);
     }
-    }
+
+    _control_task = -1;
+    return;
 
 }
 
