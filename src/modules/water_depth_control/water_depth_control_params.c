@@ -38,6 +38,22 @@
  * Parameters for Water Depth Control
  *
  */
-//PARAM_DEFINE_INT32(UW_DEPTH_CONTROL_MODE, 0);
+
+/**
+ * <Water Depth>
+ *
+ * @unit mbar
+ */
+PARAM_DEFINE_FLOAT(WATER_DEPTH, 1030.0f);
+
+/**
+ * Roll P Gain
+ *
+ * Roll proportional gain, i.e. desired angular speed in rad/s for error 1 rad.
+ * increase to make controler more aggressive
+ *
+ */
+
+PARAM_DEFINE_FLOAT(WATER_DEPTH_P, 0.002f);
 
 

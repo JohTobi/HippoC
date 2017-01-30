@@ -103,10 +103,10 @@ private:
      float      _thrust_sp;             /**< thrust setpoint */
      int        _v_att_sp_sub;          /**< vehicle attitude setpoint subscription */
      int        _pressure_raw;
-     float        _pressure_set;
+     float      _pressure_set;
      int        _v_att_sub;             /**< vehicle attitude subscription */
      int        _params_sub;            /**< parameter updates subscription */
-     float        _p_gain;
+
 
      orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
 
@@ -119,6 +119,8 @@ private:
 
      math::Vector<3>    _att_control;   /**< attitude control vector */
 
+
+
      struct {
          param_t roll_p;
          param_t pitch_p;
@@ -129,6 +131,8 @@ private:
          param_t yaw_rate_p;
 
          param_t control_mode;
+
+         param_t water_depth_p;
      }		_params_handles;		/**< handles for interesting parameters */
 
      struct {
@@ -141,6 +145,8 @@ private:
          float yaw_rate_p;
 
          int control_mode;
+
+         float water_depth_p;
      }		_params;
 
 
@@ -199,6 +205,9 @@ WaterDepthControl::WaterDepthControl() :
 
     _params_handles.control_mode    =   param_find("UW_CONTROL_MODE");
 
+    _pressure_set = param_find("WATER_DEPTH");
+    _params_handles.water_depth_p = param_find("WATER_DEPTH_P");
+
     /* fetch initial parameter values */
     parameters_update();
 }
@@ -240,6 +249,9 @@ int WaterDepthControl::parameters_update()
     param_get(_params_handles.yaw_rate_p, &(_params.yaw_rate_p));
 
     param_get(_params_handles.control_mode, &(_params.control_mode));
+
+    param_get(_pressure_set, &(_pressure_set));
+    param_get(_params_handles.water_depth_p, &(_params.water_depth_p));
 
     return OK;
 }
@@ -302,71 +314,19 @@ void WaterDepthControl::vehicle_attitude_setpoint_poll()
 //define Pressure Depth Control
 void WaterDepthControl::control_attitude()
 {
-/*
-        px4_pollfd_struct_t fds[1];
-        fds[0].fd = _pressure_raw;
-        fds[0].events = POLLIN;
 
-        int error_counter = 0;
-
-
-            int poll_ret = px4_poll(fds, 1, 1000);
-
-            if (poll_ret == 0) {
-                       // this means none of our providers is giving us data
-                       PX4_ERR("Got no data within a second");
-
-            } else if (poll_ret < 0) {
-                       // this is seriously bad - should be an emergency
-                   if (error_counter < 10 || error_counter % 50 == 0) {
-                           // use a counter to prevent flooding (and slowing us down)
-                           PX4_ERR("ERROR return value from poll(): %d", poll_ret);
-                   }
-
-                   error_counter++;
-
-            } else {
-            if (fds[0].revents & POLLIN) {
-                struct pressure_s press;
-
-                orb_copy(ORB_ID(pressure), _pressure_raw, &press);
-                PX4_INFO("Pressure: %8.4f",
-                         (double)press.pressure_mbar);
-            }
-            }
-
-*/
             struct pressure_s press;
 
             orb_copy(ORB_ID(pressure), _pressure_raw, &press);
 
-            _pressure_set = 1030;
-            _p_gain = 0.002;
-
-         //   PX4_INFO("Pressure: %8.4f",
-         //            (double)press.pressure_mbar);
-
             //p-control
-            //float pressure_err = _pressure_set - press.pressure_mbar;
             float pressure_err =  press.pressure_mbar - _pressure_set;
 
-         //   PX4_INFO("Pressure_err: %8.4f",
-         //            (double)pressure_err);
-
-            float control_depth = _p_gain * pressure_err;
-
-         //   PX4_INFO("Control_pitch: %8.4f",
-         //            (double)control_depth);
-
-            //float control_pitch = (pitch_err * _params.pitch_p)*cr+((yaw_err) * _params.yaw_p)*sr;
-
+            float control_depth = _params.water_depth_p * pressure_err;
 
             _thrust_sp = control_depth;
 
-
-
-
-           usleep(1000000);
+            usleep(100000);
 }
 
 
@@ -379,7 +339,7 @@ void WaterDepthControl::task_main()
     _params_sub = orb_subscribe(ORB_ID(parameter_update));
 
     /* initialize parameters cache */
-   parameters_update();
+    parameters_update();
 
     /* advertise actuator controls */
     _actuators_0_pub = orb_advertise(ORB_ID(actuator_controls_0), &_actuators);
