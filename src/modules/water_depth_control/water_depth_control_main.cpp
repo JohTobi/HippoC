@@ -40,6 +40,7 @@
  * Based on rover steering control example by Lorenz Meier <lorenz@px4.io>
  *
  * @author Tobias Johannink
+ * @author Eugen Solowjow
  */
 
 #include <px4_config.h>
@@ -71,6 +72,7 @@
 #include <systemlib/circuit_breaker.h>
 #include <lib/mathlib/mathlib.h>
 #include <geo/geo.h>
+#include <uORB/topics/adc_report.h> // includes ADC readings
 
 /**
  * Water depth control app start / stop handling function
@@ -106,6 +108,7 @@ private:
      float      _pressure_set;
      int        _v_att_sub;             /**< vehicle attitude subscription */
      int        _params_sub;            /**< parameter updates subscription */
+
      float      _det;
      float      _invdet;
      float time_saved;
@@ -116,6 +119,9 @@ private:
 
 
 
+     int        _adc_sub_fd;         /**< raw sensor data subscription */
+
+
 
      orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
 
@@ -124,6 +130,7 @@ private:
      struct vehicle_attitude_setpoint_s _v_att_sp;      /**< vehicle attitude setpoint */
      struct actuator_controls_s			_actuators;			/**< actuator controls */
      struct vehicle_attitude_s           _v_att;             /**< vehicle attitude */
+     struct adc_report_s 			_raw_adc;				/**< raw sensor values incl ADC */
 
      perf_counter_t     _loop_perf;     /**< loop performance counter */
      perf_counter_t     _controller_latency_perf;
@@ -226,12 +233,16 @@ private:
 
      void vehicle_attitude_setpoint_poll();
 
+
      /**
       * Check for control state updates.
       */
      void control_state_poll();
 
      void task_main();
+
+
+     void raw_adc_data_poll();
 
 };
 
@@ -252,6 +263,7 @@ WaterDepthControl::WaterDepthControl() :
     _ctrl_state_sub(-1),
     _v_att_sub(-1),
     _params_sub(-1),
+    _adc_sub_fd(-1),
 
     // publications
 
@@ -449,6 +461,7 @@ void WaterDepthControl::vehicle_attitude_setpoint_poll()
 }
 
 
+
 void WaterDepthControl::control_state_poll()
 {
     /* check if there is a new message */
@@ -457,6 +470,19 @@ void WaterDepthControl::control_state_poll()
 
     if (updated) {
         orb_copy(ORB_ID(control_state), _ctrl_state_sub, &_ctrl_state);
+    }
+}
+
+
+
+void WaterDepthControl::raw_adc_data_poll()
+{
+    /* Always update */
+    bool updated = 1;
+
+    /* copy adc raw data into local buffer */
+    if (updated) {
+        orb_copy(ORB_ID(adc_report), _adc_sub_fd, &_raw_adc);
     }
 }
 
@@ -633,7 +659,11 @@ void WaterDepthControl::task_main()
     _v_att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
     _pressure_raw = orb_subscribe(ORB_ID(pressure));
     _params_sub = orb_subscribe(ORB_ID(parameter_update));
+
     _ctrl_state_sub = orb_subscribe(ORB_ID(control_state));
+
+    _adc_sub_fd = orb_subscribe(ORB_ID(adc_report));
+
 
     /* initialize parameters cache */
     parameters_update();
@@ -681,7 +711,13 @@ void WaterDepthControl::task_main()
 
 
 
+
             //thrust begins at 0.219
+
+
+            //get ADC value and print it for debugging
+            raw_adc_data_poll();
+            printf("ADC 10:\t%8.4f\n", (double)_raw_adc.channel_value[6]);
 
 
             /* publish actuator controls */
