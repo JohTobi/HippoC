@@ -402,7 +402,9 @@ void WaterDepthControl::task_main()
 
             //get ADC value and print it for debugging
             raw_adc_data_poll();
-            printf("ADC 10:\t%8.4f\n", (double)_raw_adc.channel_value[6]);
+
+              //  printf("ADC 7:\t%8.4f\n", (double)_raw_adc.channel_value[7]);
+
 
             /* publish actuator controls */
             _actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
