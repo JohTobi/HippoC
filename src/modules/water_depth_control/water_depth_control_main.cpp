@@ -110,6 +110,7 @@ private:
 
      orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
 
+     struct vehicle_rates_setpoint_s    _v_rates_sp;    /**< vehicle rates setpoint */
      struct vehicle_attitude_setpoint_s _v_att_sp;      /**< vehicle attitude setpoint */
      struct actuator_controls_s			_actuators;			/**< actuator controls */
      struct vehicle_attitude_s           _v_att;             /**< vehicle attitude */
@@ -117,8 +118,10 @@ private:
      perf_counter_t     _loop_perf;     /**< loop performance counter */
      perf_counter_t     _controller_latency_perf;
 
+
      math::Vector<3>    _att_control;   /**< attitude control vector */
 
+     math::Matrix<3, 3> _I;             /**< identity matrix */
 
 
      struct {
@@ -191,8 +194,7 @@ WaterDepthControl::WaterDepthControl() :
     memset(&_actuators, 0, sizeof(_actuators));
     memset(&_v_att, 0, sizeof(_v_att));
 
-    _thrust_sp = 0.0f;
-    _att_control.zero();
+    _I.identity();
 
     _params_handles.roll_p			= 	param_find("UW_ROLL_P");
     _params_handles.roll_rate_p		= 	param_find("UW_ROLL_RATE_P");
@@ -325,6 +327,9 @@ void WaterDepthControl::control_attitude()
             float control_depth = _params.water_depth_p * pressure_err;
 
             _thrust_sp = control_depth;
+
+
+
 
             usleep(100000);
 }
