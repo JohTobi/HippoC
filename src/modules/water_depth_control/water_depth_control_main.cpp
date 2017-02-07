@@ -61,6 +61,7 @@
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/actuator_controls.h>
+#include <uORB/topics/control_state.h>
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/pressure.h>
 #include <systemlib/param/param.h>
@@ -101,15 +102,21 @@ private:
      bool       _task_should_exit;      /**< if true, task_main() should exit */
      int        _control_task;          /**< task handle */
      float      _thrust_sp;             /**< thrust setpoint */
+     int        _ctrl_state_sub;        /**< control state subscription */
      int        _v_att_sp_sub;          /**< vehicle attitude setpoint subscription */
      int        _pressure_raw;
      float      _pressure_set;
      int        _v_att_sub;             /**< vehicle attitude subscription */
      int        _params_sub;            /**< parameter updates subscription */
+     float      _det;
+     float      _invdet;
+
+
 
 
      orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
 
+     struct control_state_s             _ctrl_state;    /**< control state */
      struct vehicle_rates_setpoint_s    _v_rates_sp;    /**< vehicle rates setpoint */
      struct vehicle_attitude_setpoint_s _v_att_sp;      /**< vehicle attitude setpoint */
      struct actuator_controls_s			_actuators;			/**< actuator controls */
@@ -120,8 +127,17 @@ private:
 
 
      math::Vector<3>    _att_control;   /**< attitude control vector */
+     math::Vector<3>      torques;
+     math::Vector<6>    _y;
 
-     math::Matrix<3, 3> _I;             /**< identity matrix */
+     math::Matrix<3, 3> _R_sp;              /**< rotation matrix setpoint */
+     math::Matrix<3, 3> _I;                 /**< intertia tensor */
+     math::Matrix<3, 3> _att_p_gain;        /**< Matrix Controller Parameters Stabilization */
+
+
+
+
+
 
 
      struct {
@@ -136,6 +152,17 @@ private:
          param_t control_mode;
 
          param_t water_depth_p;
+
+         param_t att_p_gain_xx;
+         param_t att_p_gain_yx;
+         param_t att_p_gain_zx;
+         param_t att_p_gain_xy;
+         param_t att_p_gain_yy;
+         param_t att_p_gain_zy;
+         param_t att_p_gain_xz;
+         param_t att_p_gain_yz;
+         param_t att_p_gain_zz;
+
      }		_params_handles;		/**< handles for interesting parameters */
 
      struct {
@@ -150,6 +177,17 @@ private:
          int control_mode;
 
          float water_depth_p;
+
+         float att_p_gain_xx;
+         float att_p_gain_yx;
+         float att_p_gain_zx;
+         float att_p_gain_xy;
+         float att_p_gain_yy;
+         float att_p_gain_zy;
+         float att_p_gain_xz;
+         float att_p_gain_yz;
+         float att_p_gain_zz;
+
      }		_params;
 
 
@@ -157,13 +195,20 @@ private:
      void   parameter_update_poll();
 
 
-     void task_main();
+
 
      static void task_main_trampoline(int argc, char *argv[]);
 
      void control_attitude();
 
      void vehicle_attitude_setpoint_poll();
+
+     /**
+      * Check for control state updates.
+      */
+     void control_state_poll();
+
+     void task_main();
 };
 
 namespace water_depth_control
@@ -174,16 +219,21 @@ namespace water_depth_control
 //define Constructor
 WaterDepthControl::WaterDepthControl() :
 
-    _task_should_exit(false),
+    _task_should_exit(false),/**
+         * Check for control state updates.
+         */
     _control_task(-1),
 
     //subscriptions
+    _ctrl_state_sub(-1),
     _v_att_sub(-1),
     _params_sub(-1),
 
     // publications
 
     _actuators_0_pub(nullptr),
+
+    _ctrl_state{},
 
     /* performance counters */
     _loop_perf(perf_alloc(PC_ELAPSED, "water_depth_control")),
@@ -194,7 +244,26 @@ WaterDepthControl::WaterDepthControl() :
     memset(&_actuators, 0, sizeof(_actuators));
     memset(&_v_att, 0, sizeof(_v_att));
 
-    _I.identity();
+    _R_sp.identity();
+
+    /* inertia tensor */
+    _I(0, 0) = 0.1;     /**< _I_xx */
+    _I(1, 0) = 0;       /**< _I_yx */
+    _I(2, 0) = 0;       /**< _I_zx */
+    _I(0, 1) = 0;       /**< _I_xy */
+    _I(1, 1) = 0.4;     /**< _I_yy */
+    _I(2, 1) = 0;       /**< _I_zy */
+    _I(0, 2) = 0;       /**< _I_xz */
+    _I(1, 2) = 0;       /**< _I_yz */
+    _I(2, 2) = 0.4;     /**< _I_zz */
+
+
+
+
+
+
+
+
 
     _params_handles.roll_p			= 	param_find("UW_ROLL_P");
     _params_handles.roll_rate_p		= 	param_find("UW_ROLL_RATE_P");
@@ -209,6 +278,17 @@ WaterDepthControl::WaterDepthControl() :
 
     _pressure_set = param_find("WATER_DEPTH");
     _params_handles.water_depth_p = param_find("WATER_DEPTH_P");
+
+    _params_handles.att_p_gain_xx = param_find("ATT_P_GAIN_XX");
+    _params_handles.att_p_gain_yx = param_find("ATT_P_GAIN_YX");
+    _params_handles.att_p_gain_zx = param_find("ATT_P_GAIN_ZX");
+    _params_handles.att_p_gain_xy = param_find("ATT_P_GAIN_XY");
+    _params_handles.att_p_gain_yy = param_find("ATT_P_GAIN_YY");
+    _params_handles.att_p_gain_zy = param_find("ATT_P_GAIN_ZY");
+    _params_handles.att_p_gain_xz = param_find("ATT_P_GAIN_XZ");
+    _params_handles.att_p_gain_yz = param_find("ATT_P_GAIN_YZ");
+    _params_handles.att_p_gain_zz = param_find("ATT_P_GAIN_ZZ");
+
 
     /* fetch initial parameter values */
     parameters_update();
@@ -254,6 +334,18 @@ int WaterDepthControl::parameters_update()
 
     param_get(_pressure_set, &(_pressure_set));
     param_get(_params_handles.water_depth_p, &(_params.water_depth_p));
+
+    param_get(_params_handles.att_p_gain_xx, &(_params.att_p_gain_xx));
+    param_get(_params_handles.att_p_gain_yx, &(_params.att_p_gain_yx));
+    param_get(_params_handles.att_p_gain_zx, &(_params.att_p_gain_zx));
+    param_get(_params_handles.att_p_gain_xy, &(_params.att_p_gain_xy));
+    param_get(_params_handles.att_p_gain_yy, &(_params.att_p_gain_yy));
+    param_get(_params_handles.att_p_gain_zy, &(_params.att_p_gain_zy));
+    param_get(_params_handles.att_p_gain_xz, &(_params.att_p_gain_xz));
+    param_get(_params_handles.att_p_gain_yz, &(_params.att_p_gain_yz));
+    param_get(_params_handles.att_p_gain_zz, &(_params.att_p_gain_zz));
+
+
 
     return OK;
 }
@@ -313,21 +405,120 @@ void WaterDepthControl::vehicle_attitude_setpoint_poll()
     }
 }
 
+
+void WaterDepthControl::control_state_poll()
+{
+    /* check if there is a new message */
+    bool updated;
+    orb_check(_ctrl_state_sub, &updated);
+
+    if (updated) {
+        orb_copy(ORB_ID(control_state), _ctrl_state_sub, &_ctrl_state);
+    }
+}
+
+
 //define Pressure Depth Control
 void WaterDepthControl::control_attitude()
 {
 
+            control_state_poll();
+
+
+            /* water depth controller start */
             struct pressure_s press;
 
             orb_copy(ORB_ID(pressure), _pressure_raw, &press);
+
+  //          PX4_INFO("control_depth:\t%8.4f",
+  //                               (double)press.pressure_mbar);
 
             //p-control
             float pressure_err =  press.pressure_mbar - _pressure_set;
 
             float control_depth = _params.water_depth_p * pressure_err;
 
-            _thrust_sp = control_depth;
+ //           PX4_INFO("control_depth:\t%8.4f",
+ //                                (double)control_depth);
+            /* water depth controller end */
 
+
+            //get current rotation matrix from control state quaternions
+            math::Quaternion q_att(_ctrl_state.q[0], _ctrl_state.q[1], _ctrl_state.q[2], _ctrl_state.q[3]);
+            math::Matrix<3, 3> R = q_att.to_dcm();
+
+/*          //Output current rotation matrix
+            PX4_INFO("R_x:\t%8.4f\t%8.4f\t%8.4f",
+                                 (double)R(0, 0),
+                                 (double)R(1, 0),
+                                 (double)R(2, 0));
+
+            PX4_INFO("R_y:\t%8.4f\t%8.4f\t%8.4f",
+                                 (double)R(0, 1),
+                                 (double)R(1, 1),
+                                 (double)R(2, 1));
+
+            PX4_INFO("R_z:\t%8.4f\t%8.4f\t%8.4f",
+                                 (double)R(0, 2),
+                                 (double)R(1, 2),
+                                 (double)R(2, 2));
+*/
+            // Compute attitude error
+            math::Matrix<3, 3> e_R =  (_R_sp.transposed() * R - R.transposed() * _R_sp) * 0.5;
+
+            // vee-map the error to get a vector instead of matrix e_R
+            math::Vector<3> e_R_vec(e_R(2,1), e_R(0,2), e_R(1,0));
+
+          //Output attitude error
+    /*        PX4_INFO("e_R:\t%8.4f\t%8.4f\t%8.4f",
+                                 (double)e_R(2, 1),
+                                 (double)e_R(0, 2),
+                                 (double)e_R(1, 0));
+*/
+/*
+            math::Vector <3> omega;
+            omega(0) = _v_att.rollspeed;
+            omega(1) = _v_att.pitchspeed;
+            omega(2) = _v_att.yawspeed;
+
+
+            math::Vector <3> omega2;
+            omega2(0) = _I(0, 0) * omega(0);
+            omega2(1) = _I(1, 1) * omega(1);
+            omega2(2) = _I(2, 2) * omega(2);
+
+
+            math::Vector<3> cross;
+            cross(0) = omega(1) * omega2(2) - omega(2) * omega2(1);
+            cross(1) = omega(2) * omega2(0) - omega(0) * omega2(2);
+            cross(2) = omega(0) * omega2(1) - omega(1) * omega2(0);
+*/
+            //torques = - _att_p_gain * e_R_vec  + cross;
+
+
+
+                    /* Matrix Controller Parameters Stabilization */
+                    _att_p_gain(0, 0) = _params.att_p_gain_xx;       /**< _att_p_gain_xx */
+                    _att_p_gain(1, 0) = _params.att_p_gain_yx;       /**< _att_p_gain_yx */
+                    _att_p_gain(2, 0) = _params.att_p_gain_zx;       /**< _att_p_gain_zx */
+                    _att_p_gain(0, 1) = _params.att_p_gain_xy;       /**< _att_p_gain_xy */
+                    _att_p_gain(1, 1) = _params.att_p_gain_yy;       /**< _att_p_gain_yy */
+                    _att_p_gain(2, 1) = _params.att_p_gain_zy;       /**< _att_p_gain_zy */
+                    _att_p_gain(0, 2) = _params.att_p_gain_xz;       /**< _att_p_gain_xz */
+                    _att_p_gain(1, 2) = _params.att_p_gain_yz;       /**< _att_p_gain_yz */
+                    _att_p_gain(2, 2) = _params.att_p_gain_zz;       /**< _att_p_gain_zz */
+
+            torques = - _att_p_gain * e_R_vec;
+/*
+           PX4_INFO("torques:\t%8.4f\t%8.4f\t%8.4f",
+                                (double)torques(0),
+                                (double)torques(1),
+                                (double)torques(2));
+*/
+            _att_control(0) = torques(0); //roll
+            _att_control(1) = torques(1);    //pitch
+            _att_control(2) = torques(2);      //yaw
+              _thrust_sp = control_depth;
 
 
 
@@ -342,6 +533,7 @@ void WaterDepthControl::task_main()
     _v_att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
     _pressure_raw = orb_subscribe(ORB_ID(pressure));
     _params_sub = orb_subscribe(ORB_ID(parameter_update));
+    _ctrl_state_sub = orb_subscribe(ORB_ID(control_state));
 
     /* initialize parameters cache */
     parameters_update();
@@ -353,6 +545,7 @@ void WaterDepthControl::task_main()
 
     fds[0].fd = _v_att_sub;
     fds[0].events = POLLIN;
+
 
     while (!_task_should_exit) {
 
@@ -385,6 +578,11 @@ void WaterDepthControl::task_main()
 
             //start controller
             control_attitude();
+
+
+
+            //thrust begins at 0.219
+
 
             /* publish actuator controls */
             _actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
