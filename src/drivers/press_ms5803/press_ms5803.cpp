@@ -340,7 +340,7 @@ PRESS_MS5803::cmd_adc(uint8_t cmd)
 	transfer(&cmd_temp, 1, nullptr, 0);
 	}
 
-	usleep(700);
+    //usleep(700);
 
 	// read sequence
 	uint8_t cmd_temp = CMD_ADC_READ;
