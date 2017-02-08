@@ -173,6 +173,7 @@ private:
 
 	// internal variables
 	work_s						_work;		///< work queue for scheduling reads
+	ringbuffer::RingBuffer	*_reports;	///< buffer of recorded pressures, temperatures
 	orb_advert_t			_press_topic;	///< uORB pressure topic
     // orb_id_t					_press_orb_id;	///< uORB pressure topic ID
 	double						_pressure_value;	///< pressure in bar (-1 means unknown)
@@ -193,14 +194,12 @@ namespace
 PRESS_MS5803::PRESS_MS5803(int bus, uint16_t press_ms5803_addr) :
 	I2C("press_ms5803", PRESS_MS5803_DEVICE_PATH, bus, press_ms5803_addr, 100000),
 	_work{},
+	_reports(nullptr),
 	_press_topic(nullptr),
     // _press_orb_id(nullptr),
 	_pressure_value(0.0f),
-    _temperature_value(0.0f),
-    _collect_phase(false)
-
-
-
+  _temperature_value(0.0f),
+  _collect_phase(false)
 {
 	memset(&_work, 0, sizeof(_work));
 }
@@ -208,14 +207,19 @@ PRESS_MS5803::PRESS_MS5803(int bus, uint16_t press_ms5803_addr) :
 
 PRESS_MS5803::~PRESS_MS5803()
 {
+	stop();
+
 	g_press_ms5803 = nullptr;
+
+	if (_reports != nullptr) {
+		delete _reports;
+	}
 }
 
 int
 PRESS_MS5803::init()
 {
-	// init orb id
-    // _press_orb_id = ORB_ID(pressure);
+	// subscripe
 	orb_subscribe(ORB_ID(pressure));
 
 	//initialise I2C bus
@@ -226,7 +230,16 @@ PRESS_MS5803::init()
 			errx(1, "failed to init I2C");
 			return ret;
 	} else {
-			start();
+		// allocate basic report buffers
+			_reports = new ringbuffer::RingBuffer(2, sizeof(struct pressure_s));
+
+			if (_reports == nullptr) {
+			ret = ENOTTY;
+
+			} else {
+				// start work queue
+				start();
+			}
 	}
 
     return ret;
@@ -237,9 +250,12 @@ PRESS_MS5803::start()
 {
     _collect_phase = false;
 
-loadCoefs();
-// schedule a cycle to start measurements
-work_queue(HPWORK, &_work, (worker_t)&PRESS_MS5803::cycle_trampoline, this, 1);
+		// reset the report ring and state machine
+		_reports->flush();
+
+		loadCoefs();
+		// schedule a cycle to start measurements
+		work_queue(HPWORK, &_work, (worker_t)&PRESS_MS5803::cycle_trampoline, this, 1);
 }
 
 void
@@ -284,6 +300,9 @@ PRESS_MS5803::cycle()
     } else {
         _press_topic = orb_advertise(ORB_ID(pressure),&pressure);
     }
+
+		// post a report to the ring
+		_reports->force(&pressure);
 
 	// notify anyone waiting for data
 	poll_notify(POLLIN);
