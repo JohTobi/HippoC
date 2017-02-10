@@ -61,9 +61,13 @@
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/actuator_controls.h>
+<<<<<<< HEAD
 #include <uORB/topics/control_state.h>
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/pressure.h>
+=======
+#include <uORB/topics/parameter_update.h>
+>>>>>>> 86c678f974e9fbc7d2392532e6f22a352d3d5ea8
 #include <systemlib/param/param.h>
 #include <systemlib/err.h>
 #include <systemlib/perf_counter.h>
@@ -77,14 +81,18 @@
  *
  * @ingroup apps
  */
+<<<<<<< HEAD
 
 
 
+=======
+>>>>>>> 86c678f974e9fbc7d2392532e6f22a352d3d5ea8
 extern "C" __EXPORT int water_depth_control_main(int argc, char *argv[]);
 
 class WaterDepthControl {
 public:
     /**
+<<<<<<< HEAD
       * Constructor
       */
      WaterDepthControl();
@@ -209,10 +217,39 @@ private:
      void control_state_poll();
 
      void task_main();
+=======
+     * Constructor
+     */
+    WaterDepthControl();
+
+    /**
+     * Destructor, also kills the main task
+     */
+    ~WaterDepthControl();
+
+    /**
+     * Start the keep water depth task.
+     *
+     * @return  OK on success.
+     */
+    int start();
+
+private:
+
+    bool    _task_should_exit;  /**< if true, task_main() should exit */
+    int     _control_task;      /**< task handle */
+
+    void task_main();
+
+    static void task_main_trampoline(int argc, char *argv[]);
+
+
+>>>>>>> 86c678f974e9fbc7d2392532e6f22a352d3d5ea8
 };
 
 namespace water_depth_control
 {
+<<<<<<< HEAD
     WaterDepthControl	*g_control;
 }
 
@@ -292,12 +329,28 @@ WaterDepthControl::WaterDepthControl() :
 
     /* fetch initial parameter values */
     parameters_update();
+=======
+
+WaterDepthControl	*g_control;
+}
+
+
+//define Constructor
+WaterDepthControl::WaterDepthControl() :
+
+    _task_should_exit(false),
+    _control_task(-1)
+
+{
+
+>>>>>>> 86c678f974e9fbc7d2392532e6f22a352d3d5ea8
 }
 
 //define Destructor
 WaterDepthControl::~WaterDepthControl()
 {
     if (_control_task != -1) {
+<<<<<<< HEAD
             /* task wakes up every 100ms or so at the longest */
         _task_should_exit = true;
 
@@ -309,6 +362,19 @@ WaterDepthControl::~WaterDepthControl()
             usleep(20000);
 
                 /* if we have given up, kill it */
+=======
+        /* task wakes up every 100ms or so at the longest */
+        _task_should_exit = true;
+
+        /* wait for a second for the task to quit at our request */
+        unsigned i = 0;
+
+        do {
+            /* wait 20ms */
+            usleep(20000);
+
+            /* if we have given up, kill it */
+>>>>>>> 86c678f974e9fbc7d2392532e6f22a352d3d5ea8
             if (++i > 50) {
                 px4_task_delete(_control_task);
                 break;
@@ -316,6 +382,7 @@ WaterDepthControl::~WaterDepthControl()
         } while (_control_task != -1);
     }
 
+<<<<<<< HEAD
     water_depth_control::g_control = nullptr;
 }
 
@@ -364,6 +431,10 @@ void WaterDepthControl::parameter_update_poll()
 
         parameters_update();
     }
+=======
+
+    water_depth_control::g_control = nullptr;
+>>>>>>> 86c678f974e9fbc7d2392532e6f22a352d3d5ea8
 }
 
 
@@ -393,6 +464,7 @@ void WaterDepthControl::task_main_trampoline(int argc, char *argv[])
     water_depth_control::g_control->task_main();
 }
 
+<<<<<<< HEAD
 
 void WaterDepthControl::vehicle_attitude_setpoint_poll()
 {
@@ -664,4 +736,72 @@ int water_depth_control_main(int argc, char *argv[])
 
         warnx("unrecognized command");
         return 1;
+=======
+//main task
+void WaterDepthControl::task_main()
+{
+    PX4_INFO("Output water_depth_control!");
+}
+
+
+//main function
+int water_depth_control_main(int argc, char *argv[])
+{
+     // PX4_INFO("Output water_depth_control!");
+
+     if (argc < 2) {
+         warnx("usage: water_depth_control {start|stop|status}");
+         return 1;
+     }
+
+     if (!strcmp(argv[1], "start")) {
+
+         if (water_depth_control::g_control != nullptr) {
+             warnx("already running");
+             return 1;
+         }
+
+         water_depth_control::g_control = new WaterDepthControl;
+
+         if (water_depth_control::g_control == nullptr) {
+             warnx("alloc failed");
+             return 1;
+         }
+
+         if (OK != water_depth_control::g_control->start()) {
+             delete water_depth_control::g_control;
+             water_depth_control::g_control = nullptr;
+             warnx("start failed");
+             return 1;
+         }
+
+         return 0;
+     }
+
+     if (!strcmp(argv[1], "stop")) {
+         if (water_depth_control::g_control == nullptr) {
+             warnx("not running");
+             return 1;
+         }
+
+         delete water_depth_control::g_control;
+         water_depth_control::g_control = nullptr;
+         return 0;
+     }
+
+     if (!strcmp(argv[1], "status")) {
+         if (water_depth_control::g_control) {
+             warnx("running");
+             return 0;
+
+         } else {
+             warnx("not running");
+             return 1;
+         }
+     }
+
+     warnx("unrecognized command");
+     return 1;
+
+>>>>>>> 86c678f974e9fbc7d2392532e6f22a352d3d5ea8
 }
