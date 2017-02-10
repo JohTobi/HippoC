@@ -430,8 +430,8 @@ void WaterDepthControl::control_attitude()
 
             orb_copy(ORB_ID(pressure), _pressure_raw, &press);
 
-  //          PX4_INFO("control_depth:\t%8.4f",
-  //                               (double)press.pressure_mbar);
+            PX4_INFO("control_depth:\t%8.4f",
+                                 (double)press.pressure_mbar);
 
             //p-control
             float pressure_err =  press.pressure_mbar - _pressure_set;
