@@ -67,7 +67,7 @@ int raw_pressure_main(int argc, char *argv[])
 
     int error_counter = 0;
 
-    for (int i = 0; i < 50; i++) {
+    for (int i = 0; i < 100; i++) {
         int poll_ret = px4_poll(fds, 1, 1000);
 
         if (poll_ret == 0) {
