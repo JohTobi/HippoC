@@ -83,7 +83,6 @@ extern "C" __EXPORT int water_depth_control_main(int argc, char *argv[]);
 class WaterDepthControl {
 public:
     /**
-<<<<<<< HEAD
       * Constructor
       */
      WaterDepthControl();
@@ -110,6 +109,10 @@ private:
      float      _det;
      float      _invdet;
      float time_saved;
+     float p;
+     float p_neg;
+     float t;
+     float t_neg;
 
 
 
@@ -278,6 +281,10 @@ WaterDepthControl::WaterDepthControl() :
     _I(2, 2) = 0.4;     /**< _I_zz */
 
     time_saved  = 0;
+    p = 0.2;
+    p_neg = -0.2;
+    t = 0.1;
+    t_neg = -0.1;
 
 
     _params_handles.roll_p			= 	param_find("UW_ROLL_P");
@@ -466,18 +473,26 @@ void WaterDepthControl::control_attitude()
 
             orb_copy(ORB_ID(pressure), _pressure_raw, &press);
 
-//            PX4_INFO("control_depth:\t%8.4f",
-//                                 (double)press.pressure_mbar);
+
 
             //p-control
-      //      float pressure_err =  press.pressure_mbar - _pressure_set;
+            float pressure_err =  press.pressure_mbar - _pressure_set;
 
-      //      float control_depth = _params.water_depth_pgain * pressure_err;
+            float control_depth = _params.water_depth_pgain * pressure_err;
 
 
-//            PX4_INFO("control_depth:\t%8.4f",
-//                                 (double)control_depth);
-            /* water depth controller end */
+            if (hrt_absolute_time() - time_saved  > 500000){
+                PX4_INFO("control_depth:\t%8.4f",
+                                                (double)press.pressure_mbar);
+               time_saved = hrt_absolute_time();
+            }
+
+            if (hrt_absolute_time() - time_saved  > 500000){
+                PX4_INFO("control_depth:\t%8.4f",
+                                                (double)control_depth);
+               time_saved = hrt_absolute_time();
+            }
+
 
 
              _R_sp(0, 0) = _params.r_sp_xx;       /**< _att_p_gain_xx */
@@ -559,7 +574,7 @@ void WaterDepthControl::control_attitude()
             torques = - _att_p_gain * e_R_vec;
 
 
-
+/*
         if (hrt_absolute_time() - time_saved  > 500000){
            PX4_INFO("torques:\t%8.4f\t%8.4f\t%8.4f",
                                 (double)torques(2),
@@ -568,10 +583,42 @@ void WaterDepthControl::control_attitude()
            time_saved = hrt_absolute_time();
         }
 
-            _att_control(0) = torques(2); //roll
+        if (torques(1) < p && torques(1) > t){
+            torques(1) = p;
             _att_control(1) = torques(1);    //pitch
-            _att_control(2) = torques(0);      //yaw
-         //     _thrust_sp = control_depth;
+        }else{
+            _att_control(1) = torques(1);    //pitch
+        }
+
+        if (torques(1) > p_neg && torques(1) < t_neg){
+            torques(1) = p_neg;
+            _att_control(1) = torques(1);    //pitch
+        }else{
+            _att_control(1) = torques(1);    //pitch
+        }
+
+
+
+        if (torques(0) < p && torques(0) > t){
+            torques(0) = p;
+            _att_control(2) = torques(0);    //yaw
+        }else{
+            _att_control(2) = torques(0);    //yaw
+        }
+
+        if (torques(0) > p_neg && torques(0) < t_neg){
+            torques(0) = p_neg;
+            _att_control(2) = torques(0);    //yaw
+        }else{
+            _att_control(2) = torques(0);    //yaw
+        }
+
+*/
+
+   //         _att_control(0) = torques(2); //roll
+    //        _att_control(1) = torques(1);    //pitch
+    //        _att_control(2) = torques(0);      //yaw
+              _thrust_sp = control_depth;
 
 
 
@@ -651,7 +698,8 @@ void WaterDepthControl::task_main()
        }
 
         perf_end(_loop_perf);
-    }
+    }//            PX4_INFO("control_depth:\t%8.4f",
+    //                                 (double)press.pressure_mbar);
 
     _control_task = -1;
     return;
