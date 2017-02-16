@@ -109,6 +109,7 @@ private:
      int        _v_att_sub;             /**< vehicle attitude subscription */
      int        _params_sub;            /**< parameter updates subscription */
 
+
      float      _det;
      float      _invdet;
      float time_saved;
@@ -116,6 +117,7 @@ private:
      float p_neg;
      float t;
      float t_neg;
+
 
 
 
@@ -232,6 +234,9 @@ private:
      void control_attitude();
 
      void vehicle_attitude_setpoint_poll();
+
+
+     void raw_adc_data_poll();
 
 
      /**
@@ -460,6 +465,16 @@ void WaterDepthControl::vehicle_attitude_setpoint_poll()
     }
 }
 
+void WaterDepthControl::raw_adc_data_poll()
+{
+    /* Always update */
+    bool updated = 1;
+
+    /* copy adc raw data into local buffer */
+    if (updated) {
+        orb_copy(ORB_ID(adc_report), _adc_sub_fd, &_raw_adc);
+    }
+}
 
 
 void WaterDepthControl::control_state_poll()
@@ -472,6 +487,7 @@ void WaterDepthControl::control_state_poll()
         orb_copy(ORB_ID(control_state), _ctrl_state_sub, &_ctrl_state);
     }
 }
+
 
 
 
@@ -660,6 +676,8 @@ void WaterDepthControl::task_main()
     _pressure_raw = orb_subscribe(ORB_ID(pressure));
     _params_sub = orb_subscribe(ORB_ID(parameter_update));
 
+    _adc_sub_fd = orb_subscribe(ORB_ID(adc_report));
+
     _ctrl_state_sub = orb_subscribe(ORB_ID(control_state));
 
     _adc_sub_fd = orb_subscribe(ORB_ID(adc_report));
@@ -709,7 +727,10 @@ void WaterDepthControl::task_main()
             //start controller
             control_attitude();
 
+            //get ADC value and print it for debugging
+            raw_adc_data_poll();
 
+              //  printf("ADC 7:\t%8.4f\n", (double)_raw_adc.channel_value[7]);
 
 
             //thrust begins at 0.219
