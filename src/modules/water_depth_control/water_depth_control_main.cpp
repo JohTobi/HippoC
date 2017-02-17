@@ -721,8 +721,8 @@ void WaterDepthControl::task_main()
             //get ADC value and print it for debugging
             raw_adc_data_poll();
 
-            PX4_INFO("ADC:\t%8.4f\t%8.4f\t%8.4f",
-                                             (double)_raw_adc.channel_value[7]);
+            PX4_INFO("ADC:\t%8.4f",
+                                      (double)_raw_adc.channel_value[7]);
 
 
 
