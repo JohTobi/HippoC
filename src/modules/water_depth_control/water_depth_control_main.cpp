@@ -247,7 +247,7 @@ private:
      void task_main();
 
 
-     void raw_adc_data_poll();
+
 
 };
 
@@ -491,16 +491,7 @@ void WaterDepthControl::control_state_poll()
 
 
 
-void WaterDepthControl::raw_adc_data_poll()
-{
-    /* Always update */
-    bool updated = 1;
 
-    /* copy adc raw data into local buffer */
-    if (updated) {
-        orb_copy(ORB_ID(adc_report), _adc_sub_fd, &_raw_adc);
-    }
-}
 
 
 //define Pressure Depth Control
@@ -680,7 +671,7 @@ void WaterDepthControl::task_main()
 
     _ctrl_state_sub = orb_subscribe(ORB_ID(control_state));
 
-    _adc_sub_fd = orb_subscribe(ORB_ID(adc_report));
+
 
 
     /* initialize parameters cache */
@@ -730,16 +721,15 @@ void WaterDepthControl::task_main()
             //get ADC value and print it for debugging
             raw_adc_data_poll();
 
-              //  printf("ADC 7:\t%8.4f\n", (double)_raw_adc.channel_value[7]);
+            PX4_INFO("ADC:\t%8.4f\t%8.4f\t%8.4f",
+                                             (double)_raw_adc.channel_value[7]);
+
+
 
 
             //thrust begins at 0.219
 
 
-            //get ADC value and print it for debugging
-            raw_adc_data_poll();
-
-              //  printf("ADC 7:\t%8.4f\n", (double)_raw_adc.channel_value[7]);
 
 
 
