@@ -50,6 +50,7 @@ set(config_module_list
 	drivers/lis3mdl
 	drivers/press_ms5803
 
+
 	#
 	# System commands
 	#

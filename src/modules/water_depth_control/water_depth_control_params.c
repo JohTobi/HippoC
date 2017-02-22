@@ -42,9 +42,9 @@
 /**
  * <Water Depth>
  *
- * @unit mbar
+ * @unit meter
  */
-PARAM_DEFINE_FLOAT(WATER_DEPTH, 1095.0f);
+PARAM_DEFINE_FLOAT(WATER_DEPTH, 0.65f);
 
 /**
  * Roll P Gain

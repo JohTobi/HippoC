@@ -108,6 +108,9 @@ private:
      float      _pressure_set;
      int        _v_att_sub;             /**< vehicle attitude subscription */
      int        _params_sub;            /**< parameter updates subscription */
+     float      _roh_g;
+     float      _p_zero;
+     int counter;
 
 
      float      _det;
@@ -163,6 +166,8 @@ private:
 
          param_t control_mode;
 
+         param_t water_depth;
+
          param_t water_depth_pgain;
 
          param_t r_sp_xx;
@@ -197,6 +202,8 @@ private:
          float yaw_rate_p;
 
          int control_mode;
+
+         float water_depth;
 
          float water_depth_pgain;
 
@@ -302,6 +309,9 @@ WaterDepthControl::WaterDepthControl() :
     p_neg = -0.2;
     t = 0.1;
     t_neg = -0.1;
+    counter = 1;
+
+    _roh_g = 98.1;
 
 
     _params_handles.roll_p			= 	param_find("UW_ROLL_P");
@@ -315,7 +325,7 @@ WaterDepthControl::WaterDepthControl() :
 
     _params_handles.control_mode    =   param_find("UW_CONTROL_MODE");
 
-    _pressure_set = param_find("WATER_DEPTH");
+    _params_handles.water_depth = param_find("WATER_DEPTH");
     _params_handles.water_depth_pgain = param_find("W_D_PGAIN");
 
     _params_handles.r_sp_xx = param_find("R_SP_XX");
@@ -384,7 +394,7 @@ int WaterDepthControl::parameters_update()
 
     param_get(_params_handles.control_mode, &(_params.control_mode));
 
-    param_get(_pressure_set, &(_pressure_set));
+    param_get(_params_handles.water_depth, &(_params.water_depth));
     param_get(_params_handles.water_depth_pgain, &(_params.water_depth_pgain));
 
     param_get(_params_handles.r_sp_xx, &(_params.r_sp_xx));
@@ -506,6 +516,14 @@ void WaterDepthControl::control_attitude()
 
             orb_copy(ORB_ID(pressure), _pressure_raw, &press);
 
+
+            if (counter == 1){
+                _p_zero = press.pressure_mbar;
+                counter = 0;
+            }
+
+
+                _pressure_set = _roh_g * _params.water_depth + _p_zero;
 
 
             //p-control
@@ -721,8 +739,8 @@ void WaterDepthControl::task_main()
             //get ADC value and print it for debugging
             raw_adc_data_poll();
 
-            PX4_INFO("ADC:\t%8.4f",
-                                      (double)_raw_adc.channel_value[7]);
+ //           PX4_INFO("ADC:\t%8.4f",
+ //                                     (double)_raw_adc.channel_value[7]);
 
 
 
@@ -747,8 +765,7 @@ void WaterDepthControl::task_main()
        }
 
         perf_end(_loop_perf);
-    }//            PX4_INFO("control_depth:\t%8.4f",
-    //                                 (double)press.pressure_mbar);
+    }
 
     _control_task = -1;
     return;

@@ -36,7 +36,7 @@ px4_add_module(
 	COMPILE_FLAGS
 		-Os
 	SRCS
-		press_ms5803_SPI.cpp
+		press_ms5803.cpp
 	DEPENDS
 		platforms__common
 	)
