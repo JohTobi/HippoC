@@ -95,6 +95,11 @@ public:
      ~WaterDepthControl();
 
      int start();
+ 
+
+   
+   
+  
 
 
 private:
@@ -116,6 +121,7 @@ private:
      float      _det;
      float      _invdet;
      float time_saved;
+    
      float p;
      float p_neg;
      float t;
@@ -305,6 +311,8 @@ WaterDepthControl::WaterDepthControl() :
     _I(2, 2) = 0.4;     /**< _I_zz */
 
     time_saved  = 0;
+  
+    
     p = 0.2;
     p_neg = -0.2;
     t = 0.1;
@@ -312,6 +320,9 @@ WaterDepthControl::WaterDepthControl() :
     counter = 1;
 
     _roh_g = 98.1;
+    
+   
+ 
 
 
     _params_handles.roll_p			= 	param_find("UW_ROLL_P");
@@ -531,19 +542,29 @@ void WaterDepthControl::control_attitude()
 
             float control_depth = _params.water_depth_pgain * pressure_err;
 
-
+/*
             if (hrt_absolute_time() - time_saved  > 500000){
-                PX4_INFO("control_depth:\t%8.4f",
-                                                (double)press.pressure_mbar);
-               time_saved = hrt_absolute_time();
-            }
-
-            if (hrt_absolute_time() - time_saved  > 500000){
-                PX4_INFO("control_depth:\t%8.4f",
+                PX4_INFO("Control Water Depth:\t%8.4f\t%8.4f\t%8.4f",
+                                                (double)press.pressure_mbar,
+                                                (double)pressure_err,
                                                 (double)control_depth);
+
+
                time_saved = hrt_absolute_time();
             }
-
+*/
+            if(control_depth < 0){
+                control_depth = 0;
+            }
+   
+            if(press.pressure_mbar > 1300){
+                    PX4_WARN("Pressure Sensor crashed");
+                    control_depth = 0;
+                    delete water_depth_control::g_control;
+                    water_depth_control::g_control = nullptr;
+            }
+    
+    
 
 
              _R_sp(0, 0) = _params.r_sp_xx;       /**< _att_p_gain_xx */
@@ -666,6 +687,8 @@ void WaterDepthControl::control_attitude()
 
 */
 
+    
+  
    //         _att_control(0) = torques(2); //roll
     //        _att_control(1) = torques(1);    //pitch
     //        _att_control(2) = torques(0);      //yaw
@@ -750,7 +773,6 @@ void WaterDepthControl::task_main()
 
 
 
-
             /* publish actuator controls */
             _actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
             _actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f;
@@ -776,10 +798,8 @@ void WaterDepthControl::task_main()
 
 int water_depth_control_main(int argc, char *argv[])
 {
-
-
     if (argc < 2) {
-            warnx("usage: water_depth_control {start|stop|status}");
+            warnx("usage: water_depth_control {start|stop|status|mystatus}");
             return 1;
         }
 
@@ -828,7 +848,32 @@ int water_depth_control_main(int argc, char *argv[])
                 return 1;
             }
         }
+    
+        if (!strcmp(argv[1], "mystatus")) {
+            struct pressure_s press_status;
+            int _pressure_raw_status;
+            
+            _pressure_raw_status = orb_subscribe(ORB_ID(pressure));
+            
+            if (water_depth_control::g_control) {
+                int counter_status = 0;
+                
+                while(counter_status < 12){
+                    orb_copy(ORB_ID(pressure), _pressure_raw_status, &press_status);
 
+                    PX4_INFO("Pressure:\t%8.4f",
+                                        (double)press_status.pressure_mbar);
+                   
+                    counter_status++;
+                    usleep(500000);
+                }
+                return 0;
+            } else {
+                warnx("not running");
+                return 1;
+            }
+        }
+    
         warnx("unrecognized command");
         return 1;
 }
