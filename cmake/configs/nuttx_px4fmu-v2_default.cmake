@@ -98,7 +98,7 @@ set(config_module_list
 	#
 	# Estimation modules
 	#
-	modules/attitude_estimator_q
+#	modules/attitude_estimator_q
 	modules/position_estimator_inav
 	modules/local_position_estimator
 	modules/ekf2
@@ -106,8 +106,8 @@ set(config_module_list
 	#
 	# Vehicle Control
 	#
-	modules/fw_pos_control_l1
-	modules/fw_att_control
+#	modules/fw_pos_control_l1
+#	modules/fw_att_control
 	modules/mc_att_control
 	modules/mc_pos_control
 	modules/vtol_att_control
