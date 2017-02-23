@@ -74,8 +74,8 @@
 
 #include <drivers/device/i2c.h>
 #include <drivers/drv_hrt.h>
+#include <drivers/drv_device.h>
 #include <drivers/device/ringbuffer.h>
-
 
 
 /**
@@ -182,8 +182,6 @@ private:
 
     struct pressure_s pressure;
     bool _collect_phase;
-
-
 };
 
 namespace
@@ -384,7 +382,6 @@ PRESS_MS5803::read_prom(int coef_num)
 	return val;
 }
 
-
 int
 press_ms5803_main(int argc, char *argv[])
 {
@@ -434,7 +431,28 @@ press_ms5803_main(int argc, char *argv[])
             exit(0);
         }
 
+        if (!strcmp(argv[1], "reset")) {
+            int fd = open(PRESS_MS5803_DEVICE_PATH, O_RDONLY);
+
+            if (fd < 0) {
+                err(1, "failed ");
+            }
+
+            if (ioctl(fd, SENSORIOCRESET, 0) < 0) {
+                err(1, "driver reset failed");
+            }
+
+            if (ioctl(fd, SENSORIOCSPOLLRATE, SENSOR_POLLRATE_DEFAULT) < 0) {
+                err(1, "driver poll restart failed");
+            }
+
+            exit(0);
+        }
+
+
         errx(1, "unrecognized command\n%s", commandline_usage);
+
+
 
 /*
     const char *verb = argv[optind];

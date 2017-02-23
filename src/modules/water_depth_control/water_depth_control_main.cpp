@@ -542,7 +542,7 @@ void WaterDepthControl::control_attitude()
 
             float control_depth = _params.water_depth_pgain * pressure_err;
 
-/*
+
             if (hrt_absolute_time() - time_saved  > 500000){
                 PX4_INFO("Control Water Depth:\t%8.4f\t%8.4f\t%8.4f",
                                                 (double)press.pressure_mbar,
@@ -552,7 +552,7 @@ void WaterDepthControl::control_attitude()
 
                time_saved = hrt_absolute_time();
             }
-*/
+
             if(control_depth < 0){
                 control_depth = 0;
             }
@@ -859,11 +859,9 @@ int water_depth_control_main(int argc, char *argv[])
                 int counter_status = 0;
                 
                 while(counter_status < 12){
-                    orb_copy(ORB_ID(pressure), _pressure_raw_status, &press_status);
-
+                    orb_copy(ORB_ID(pressure), _pressure_raw_status, &press_status);                    
                     PX4_INFO("Pressure:\t%8.4f",
                                         (double)press_status.pressure_mbar);
-                   
                     counter_status++;
                     usleep(500000);
                 }
