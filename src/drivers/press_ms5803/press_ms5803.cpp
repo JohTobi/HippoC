@@ -452,44 +452,42 @@ press_ms5803_main(int argc, char *argv[])
 
         errx(1, "unrecognized command\n%s", commandline_usage);
 
+        /*
+            const char *verb = argv[optind];
 
+            if (!strcmp(verb, "start")) {
+                if (g_press_ms5803 != nullptr) {
+                    errx(1, "already started");
 
-/*
-    const char *verb = argv[optind];
+                } else {
+                    // create new global object
+                    g_press_ms5803 = new PRESS_MS5803();
 
-    if (!strcmp(verb, "start")) {
-        if (g_press_ms5803 != nullptr) {
-            errx(1, "already started");
+                    if (g_press_ms5803 == nullptr) {
+                        errx(1, "new failed");
+                    }
 
-        } else {
-			// create new global object
-            g_press_ms5803 = new PRESS_MS5803();
+                    if (OK != g_press_ms5803->init()) {
+                        delete g_press_ms5803;
+                        g_press_ms5803 = nullptr;
+                        errx(1, "init failed");
+                    }
+                }
+
+                exit(0);
+            }
 
             if (g_press_ms5803 == nullptr) {
-                errx(1, "new failed");
+                warnx("not started");
+                exit(1);
             }
 
-            if (OK != g_press_ms5803->init()) {
+            if (!strcmp(verb, "stop")) {
                 delete g_press_ms5803;
                 g_press_ms5803 = nullptr;
-                errx(1, "init failed");
+                exit(0);
             }
-        }
 
-		exit(0);
-	}
-
-	if (g_press_ms5803 == nullptr) {
-		warnx("not started");
-		exit(1);
-	}
-
-	if (!strcmp(verb, "stop")) {
-		delete g_press_ms5803;
-		g_press_ms5803 = nullptr;
-		exit(0);
-	}
-
-	exit(0);
-*/
+            exit(0);
+        */
 }
