@@ -31,7 +31,7 @@
  *
  ****************************************************************************/
 
-/**
+/** LEGACY DRIVER DO NOT USE! USE ms5803.cpp instead!
  * @file press_ms5803.cpp
  *
  * Driver for ms5803 pressure sensor connected via I2C.
@@ -102,10 +102,10 @@ extern "C" __EXPORT int press_ms5803_main(int argc, char *argv[]);
 #define CMD_PROM_RD 0xA0 //Prom read command
 
 /* Configuration Constants */
-#define PCA9685_BUS PX4_I2C_BUS_EXPANSION
+#define PRESS_MS5803_BUS PX4_I2C_BUS_EXPANSION
 #define PRESS_MS5803_ADDR 	0x77 /* 7-bit address of sensor. For 0x77 set CSB pin to low, cf data sheet */
 #define PRESS_MS5803_DEVICE_PATH	"/dev/press_ms5803"
-#define PRESS_MS5803_MEASUREMENT_INTERVAL_US	(1000000 / 20)	///< time in microseconds, measure at 20Hz
+#define PRESS_MS5803_MEASUREMENT_INTERVAL_US	(1000000/50)	///< time in microseconds, measure at 20Hz
 
 
 class PRESS_MS5803 : public device::I2C
@@ -114,7 +114,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	PRESS_MS5803(int bus = PX4_I2C_BUS_EXPANSION, uint16_t press_ms5803_addr = PRESS_MS5803_ADDR);
+	PRESS_MS5803(int bus = PRESS_MS5803_BUS, uint16_t press_ms5803_addr = PRESS_MS5803_ADDR);
 
 	/**
 	 * Destructor
@@ -182,6 +182,8 @@ private:
 
     struct pressure_s pressure;
     bool _collect_phase;
+
+		float time_saved;
 };
 
 namespace
@@ -200,6 +202,7 @@ PRESS_MS5803::PRESS_MS5803(int bus, uint16_t press_ms5803_addr) :
   _collect_phase(false)
 {
 	memset(&_work, 0, sizeof(_work));
+	time_saved = 0;
 }
 
 
@@ -217,7 +220,7 @@ PRESS_MS5803::~PRESS_MS5803()
 int
 PRESS_MS5803::init()
 {
-	// subscripe
+	// subscribe
 	orb_subscribe(ORB_ID(pressure));
 
 	//initialise I2C bus
@@ -305,6 +308,14 @@ PRESS_MS5803::cycle()
 	// notify anyone waiting for data
 	poll_notify(POLLIN);
 
+	if (hrt_absolute_time() - time_saved  > 500000){
+			PX4_INFO("Pressure:\t%8.4f",
+																			(double)pressure.pressure_mbar);
+
+
+		 time_saved = hrt_absolute_time();
+	}
+
 	// schedule a fresh cycle call when the measurement is done
 	work_queue(HPWORK, &_work, (worker_t)&PRESS_MS5803::cycle_trampoline, this,
 		 USEC2TICK(PRESS_MS5803_MEASUREMENT_INTERVAL_US));
@@ -316,18 +327,19 @@ PRESS_MS5803::calcPT()
 {
 	// read data from sensor
     uint32_t D1 = cmd_adc(CMD_ADC_D1 + CMD_ADC_256);
+		usleep(2000);
     uint32_t D2 = cmd_adc(CMD_ADC_D2 + CMD_ADC_256);
    /*  warnx("D1 %f", D1);
       warnx("D2 %f", D2); */
 
 
   // Computation according to manufacturer
-	int64_t dT = D2 - ((uint64_t)C[5] << 8);
-	int64_t OFF  = ((uint32_t)C[2] << 16) + ((dT * (C[4]) >> 7));
+	int64_t dT = D2 - ((uint64_t)C[5] << 8); //
+	int64_t OFF  = ((uint32_t)C[2] << 16) + ((dT * (C[4]) >> 7));//
 	int64_t SENS = ((uint32_t)C[1] << 15) + ((dT * (C[3]) >> 8));
 
-	_temperature_value = (2000 + (((uint64_t)dT * C[6]) / (float)(1 << 23))) / 100;
-	int32_t TEMP = 2000 + (int64_t)dT * (int64_t)C[6] / (int64_t)(1 << 23);
+	_temperature_value = (2000 + (((uint64_t)dT * C[6]) / (float)(1 << 23))) / 100; //
+	int32_t TEMP = 2000 + (int64_t)dT * (int64_t)C[6] / (int64_t)(1 << 23); //
 
 	if(TEMP < 2000) { // if temperature lower than 20 Celsius
         float T1 = (TEMP - 2000) * (TEMP - 2000);
@@ -349,19 +361,30 @@ PRESS_MS5803::calcPT()
 uint32_t
 PRESS_MS5803::cmd_adc(uint8_t cmd)
 {
-	uint8_t buf[3] = {0, 0, 0};
+	uint8_t buf[4] = {0, 0, 0, 0};
 
 	// initiate pressure conversion
 	{
 	uint8_t cmd_temp = CMD_ADC_CONV + cmd;
-	transfer(&cmd_temp, 1, nullptr, 0);
+	int ret = transfer(&cmd_temp, 1, nullptr, 0);
+	if (ret != OK) {
+		PX4_INFO("Failed at conversion sequence");
+	}
 	}
 
-    usleep(900);
+    usleep(5000);
 
-	// read sequence
+	// read sequences
 	uint8_t cmd_temp = CMD_ADC_READ;
-	transfer(&cmd_temp, 1, &buf[0], 3);
+	int ret = transfer(&cmd_temp, 1, &buf[0], 4);
+	//int ret = transfer(&cmd_temp, 1, nullptr, 0);
+	//usleep(10);
+	//transfer(nullptr, 0, &buf[0], 3);
+
+	// return zero on failure
+	if (ret != OK) {
+		PX4_INFO("Failed at read sequence");
+	}
 
 	uint32_t val = (buf[0] << 16) + (buf[1] << 8) + buf[2];
 
