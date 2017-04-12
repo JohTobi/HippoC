@@ -522,8 +522,8 @@ void WaterDepthControl::control_attitude()
             control_state_poll();
 
 
-            /* water depth controller start */
-            struct pressure_s press;
+        /* pressure sensor control start */
+/*            struct pressure_s press;
 
             orb_copy(ORB_ID(pressure), _pressure_raw, &press);
 
@@ -563,10 +563,11 @@ void WaterDepthControl::control_attitude()
                     delete water_depth_control::g_control;
                     water_depth_control::g_control = nullptr;
             }
-    
+ */
+        /* pressure sensor control end */
     
 
-
+        /* geometric control start */
              _R_sp(0, 0) = _params.r_sp_xx;       /**< _att_p_gain_xx */
              _R_sp(1, 0) = _params.r_sp_yx;       /**< _att_p_gain_yx */
              _R_sp(2, 0) = _params.r_sp_zx;       /**< _att_p_gain_zx */
@@ -581,9 +582,9 @@ void WaterDepthControl::control_attitude()
             //get current rotation matrix from control state quaternions
             math::Quaternion q_att(_ctrl_state.q[0], _ctrl_state.q[1], _ctrl_state.q[2], _ctrl_state.q[3]);
             math::Matrix<3, 3> R = q_att.to_dcm();
-/*
+
           //Output current rotation matrix
-            PX4_INFO("R_x:\t%8.4f\t%8.4f\t%8.4f",
+/*            PX4_INFO("R_x:\t%8.4f\t%8.4f\t%8.4f",
                                  (double)R(0, 0),
                                  (double)R(1, 0),
                                  (double)R(2, 0));
@@ -605,11 +606,13 @@ void WaterDepthControl::control_attitude()
             math::Vector<3> e_R_vec(e_R(2,1), e_R(0,2), e_R(1,0));
 
           //Output attitude error
-/*            PX4_INFO("e_R:\t%8.4f\t%8.4f\t%8.4f",
+     /*       PX4_INFO("e_R:\t%8.4f\t%8.4f\t%8.4f",
                                  (double)e_R(2, 1),
                                  (double)e_R(0, 2),
                                  (double)e_R(1, 0));
-*/
+    */
+
+
 /*
             math::Vector <3> omega;
             omega(0) = _v_att.rollspeed;
@@ -646,15 +649,18 @@ void WaterDepthControl::control_attitude()
             torques = - _att_p_gain * e_R_vec;
 
 
-/*
+
         if (hrt_absolute_time() - time_saved  > 500000){
-           PX4_INFO("torques:\t%8.4f\t%8.4f\t%8.4f",
+           PX4_INFO("e_R and torques:\t%8.4f\t%8.4f\t%8.4f\t%8.4f\t%8.4f\t%8.4f",
+                                (double)e_R(2, 1),
+                                (double)e_R(0, 2),
+                                (double)e_R(1, 0),
                                 (double)torques(2),
                                 (double)torques(1),
                                 (double)torques(0));
            time_saved = hrt_absolute_time();
         }
-
+/*
         if (torques(1) < p && torques(1) > t){
             torques(1) = p;
             _att_control(1) = torques(1);    //pitch
@@ -684,15 +690,19 @@ void WaterDepthControl::control_attitude()
         }else{
             _att_control(2) = torques(0);    //yaw
         }
-
 */
+
+
+        /* geometric control end */
+    
+    
 
     
   
-   //         _att_control(0) = torques(2); //roll
-    //        _att_control(1) = torques(1);    //pitch
-    //        _att_control(2) = torques(0);      //yaw
-              _thrust_sp = control_depth;
+            _att_control(0) = torques(2);    //roll
+            _att_control(1) = torques(1);    //pitch
+            _att_control(2) = torques(0);    //yaw
+         //     _thrust_sp = control_depth;
 
 
 
