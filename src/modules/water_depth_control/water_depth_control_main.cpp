@@ -557,34 +557,28 @@ void WaterDepthControl::control_attitude()
     
             _pressure_time_new = hrt_absolute_time();
     
+            //d-control
             _pressure_dt = (_pressure_new - _pressure_old) / (_pressure_time_new - _pressure_time_old);
 
             _pressure_old = _pressure_new;
             _pressure_time_old = _pressure_time_new;
     
-
     
-
             //calculate pressure error
             float pressure_err =  press.pressure_mbar - _pressure_set;
     
-
-
+            //pd-control
             pressure_err = pressure_err - _pressure_dt * _params.water_depth_dgain;
     
-    
+            //pd-control * gain
+            float control_depth = _params.water_depth_pgain * pressure_err;
 
-            //p-control
-           float control_depth = _params.water_depth_pgain * pressure_err;
-
-
-  
-   
-
-          /*  if(control_depth < 0){
+        /*  
+            if(control_depth < 0){
                 control_depth = 0;
             }
-   */
+        */
+    
             if(press.pressure_mbar > 1300){
                     PX4_WARN("Pressure Sensor crashed");
                     control_depth = 0;
@@ -592,16 +586,16 @@ void WaterDepthControl::control_attitude()
                     water_depth_control::g_control = nullptr;
             }
  
-  /*         if (hrt_absolute_time() - time_saved  > 500000){
+        /*
+            if (hrt_absolute_time() - time_saved  > 500000){
                 PX4_INFO("Control Water Depth:\t%8.4f\t%8.4f\t%8.4f",
                                                 (double)press.pressure_mbar,
                                                 (double)pressure_err,
                                                 (double)control_depth);
-
-
                time_saved = hrt_absolute_time();
             }
-    */
+        */
+    
     /* pressure sensor control end */
     
 
