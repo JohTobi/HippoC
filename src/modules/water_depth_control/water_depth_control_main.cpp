@@ -556,28 +556,50 @@ void WaterDepthControl::control_attitude()
             _pressure_new = press.pressure_mbar;
     
             _pressure_time_new = hrt_absolute_time();
+
+
     
             //d-control
-            _pressure_dt = (_pressure_new - _pressure_old) / (_pressure_time_new - _pressure_time_old);
+            _pressure_dt = ((_pressure_new - _pressure_old) / (_pressure_time_new - _pressure_time_old)) * 10000000;
+
+
 
             _pressure_old = _pressure_new;
             _pressure_time_old = _pressure_time_new;
-    
+
     
             //calculate pressure error
             float pressure_err =  press.pressure_mbar - _pressure_set;
+         //   float pressure_err2 = pressure_err - _pressure_dt * _params.water_depth_dgain;
+
+     //       PX4_INFO("Pressure_err:\t%8.4f",
+     //                                (double)pressure_err);
+
+            //p-control
+            float control_depth =  _params.water_depth_pgain * pressure_err;
+
+     //       PX4_INFO("Control_depth_P:\t%8.4f",
+     //                                (double)control_depth);
     
             //pd-control
-            pressure_err = pressure_err - _pressure_dt * _params.water_depth_dgain;
+            float control_depth2 = control_depth - _pressure_dt * _params.water_depth_dgain;
+
+     //       PX4_INFO("Control_depth_PD:\t%8.4f",
+      //                               (double)control_depth2);
     
             //pd-control * gain
-            float control_depth = _params.water_depth_pgain * pressure_err;
+      //      control_depth = _params.water_depth_pgain * pressure_err2;
 
-        /*  
-            if(control_depth < 0){
-                control_depth = 0;
+
+
+
+
+            if (control_depth2 < -1 || control_depth2 > 1){
+                control_depth2 = 0;
+            }else{
+                control_depth2 = control_depth2;
             }
-        */
+
     
             if(press.pressure_mbar > 1300){
                     PX4_WARN("Pressure Sensor crashed");
@@ -585,16 +607,25 @@ void WaterDepthControl::control_attitude()
                     delete water_depth_control::g_control;
                     water_depth_control::g_control = nullptr;
             }
- 
-        /*
+
+    /*        PX4_INFO("Pressure, Pressure_P, Pressure_PD, Control_Depth:\t%8.4f\t%8.4f\t%8.4f\t%8.4f",
+                                            (double)press.pressure_mbar,
+                                            (double)pressure_err,
+                                            (double)pressure_err2,
+                                            (double)control_depth2);
+                                            */
+
             if (hrt_absolute_time() - time_saved  > 500000){
-                PX4_INFO("Control Water Depth:\t%8.4f\t%8.4f\t%8.4f",
+                PX4_INFO("Pressure, Error, C_D_P, C_D_PD:\t%8.4f\t%8.4f\t%8.4f\t%8.4f",
                                                 (double)press.pressure_mbar,
                                                 (double)pressure_err,
-                                                (double)control_depth);
+                                                (double)control_depth,
+                                                (double)control_depth2);
                time_saved = hrt_absolute_time();
             }
-        */
+
+
+
     
     /* pressure sensor control end */
     
@@ -766,7 +797,7 @@ void WaterDepthControl::control_attitude()
 
 
         /* geometric control end */
-
+/*
     if (hrt_absolute_time() - time_saved  > 500000){
       //  PX4_INFO("Absolute time:\t%8.4f",
       //           (double)hrt_absolute_time());
@@ -780,7 +811,7 @@ void WaterDepthControl::control_attitude()
         
         time_saved = hrt_absolute_time();
     }
-
+*/
             //torques(0) = roll
             //torques(1) = pitch
             //torques(2) = yaw
@@ -788,11 +819,11 @@ void WaterDepthControl::control_attitude()
 
     
          //   _att_control(0) = torques(0);    //roll
-              _att_control(1) = torques(1);    //pitch
-              _att_control(2) = torques(2);    //yaw
-              _thrust_sp = control_depth;
+         //      _att_control(1) = torques(1);    //pitch
+         //     _att_control(2) = torques(2);    //yaw
+              _thrust_sp = control_depth2;
 
-
+             // PX4_INFO("ENDE der Schleife");
 
          //   usleep(1000000);
 }
