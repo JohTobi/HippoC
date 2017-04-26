@@ -618,9 +618,10 @@ void WaterDepthControl::control_attitude()
     
             // get current rates
             math::Vector <3> omega;
-            omega(0) = _v_att.yawspeed;
+            omega(0) = _v_att.rollspeed;
             omega(1) = _v_att.pitchspeed;
-            omega(2) = _v_att.rollspeed;
+            omega(2) = _v_att.yawspeed;
+
     
     //Output current rotation matrix
 /*            PX4_INFO("R_x:\t%8.4f\t%8.4f\t%8.4f",
@@ -642,14 +643,22 @@ void WaterDepthControl::control_attitude()
             math::Matrix<3, 3> e_R =  (_R_sp.transposed() * R - R.transposed() * _R_sp) * 0.5;
 
             // vee-map the error to get a vector instead of matrix e_R
-            math::Vector<3> e_R_vec(e_R(2,1), e_R(0,2), e_R(1,0));
+           // math::Vector<3> e_R_vec(e_R(2,1), e_R(0,2), e_R(1,0));
+            math::Vector<3> e_R_vec(e_R(1,0), e_R(0,2), e_R(2,1));
 
           //Output attitude error
-     /*       PX4_INFO("e_R:\t%8.4f\t%8.4f\t%8.4f",
-                                 (double)e_R(2, 1),
-                                 (double)e_R(0, 2),
-                                 (double)e_R(1, 0));
-    */
+        /*    PX4_INFO("e_R:\t%8.4f\t%8.4f\t%8.4f",
+                                 (double)e_R(2, 1),         //yaw
+                                 (double)e_R(0, 2),         //pitch
+                                 (double)e_R(1, 0));        //roll
+            */
+
+            /*    PX4_INFO("e_R:\t%8.4f\t%8.4f\t%8.4f",
+                                     (double)e_R(1, 0),         //roll
+                                     (double)e_R(0, 2),         //pitch
+                                     (double)e_R(2, 1));        //yaw
+                */
+
 
 
 /*
@@ -686,9 +695,9 @@ void WaterDepthControl::control_attitude()
                     _att_p_gain(2, 2) = _params.att_p_gain_zz;       /**< _att_p_gain_zz */
 
             //p-control
-            //torques(0) = yaw
+            //torques(0) = roll
             //torques(1) = pitch
-            //torques(2) = roll
+            //torques(2) = yaw
             torques = - _att_p_gain * e_R_vec;
   /*
             PX4_INFO("torques p-control:\t%8.4f\t%8.4f\t%8.4f",
@@ -698,14 +707,17 @@ void WaterDepthControl::control_attitude()
    */
     
             //d-control
-            torques(0) = torques(0) - omega(0) * _params.yaw_rate_p;
-            torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;
-            torques(2) = torques(2) - omega(2) * _params.roll_rate_p;
+            torques(0) = torques(0) - omega(0) * _params.roll_rate_p;       //roll
+            torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;      //pitch
+            torques(2) = torques(2) - omega(2) * _params.yaw_rate_p;        //yaw
+
+
+
    /*
             PX4_INFO("torques d-control:\t%8.4f\t%8.4f\t%8.4f",
                         (double)torques(0),
                         (double)torques(1),
-                        (double)torques(0));
+                        (double)torques(2));
 */
 
 /*
@@ -762,20 +774,22 @@ void WaterDepthControl::control_attitude()
         PX4_INFO("control_depth:\t%8.4f",
                  (double)control_depth);
         
-        PX4_INFO("Yaw, Pitch:\t%8.4f\t%8.4f",
-                 (double)torques(0),
-                 (double)torques(1));
+        PX4_INFO("Pitch, Yaw:\t%8.4f\t%8.4f",
+                 (double)torques(1),
+                 (double)torques(2));
         
         time_saved = hrt_absolute_time();
     }
 
-    //_att_control(0) = torques(2);
-    _att_control(1) = torques(1);
-    _att_control(2) = torques(0);
+            //torques(0) = roll
+            //torques(1) = pitch
+            //torques(2) = yaw
+
+
     
-         //   _att_control(0) = torques(2);    //roll
-         //   _att_control(1) = torques(1);    //pitch
-         //   _att_control(2) = torques(0);    //yaw
+         //   _att_control(0) = torques(0);    //roll
+              _att_control(1) = torques(1);    //pitch
+              _att_control(2) = torques(2);    //yaw
               _thrust_sp = control_depth;
 
 
