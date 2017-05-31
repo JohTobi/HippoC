@@ -121,6 +121,7 @@ private:
      float      _det;
      float      _invdet;
      float time_saved;
+
     
      float p;
      float p_neg;
@@ -132,7 +133,32 @@ private:
      float _pressure_new;
      float _pressure_time_old;
      float _pressure_time_new;
+    
+    
+    //SLIDING-MODE-OBSERVER (SMO)
+    //Declarations
+    ///Model parameters
+//    double rho; //Observer parameter
+//    double tau; //Observe rparameter
+//    double phi;
+    ///Koordinaten
+//    double xhat1; //Estimated depth in m
+//    double xhat2; //Estimated velocity in m/s
+    //float xhat1_prev[2]; //Estimated depth at previous time step in m
+    //float xhat2_prev[2]; //Estimated velocity at previous time step in m/s
+//    double xhat1_prev;
+//    double xhat2_prev;
+//    double iterationtime;
 
+    
+
+    float xhat1;
+    float xhat2;
+    float xhat1_prev;
+    float xhat2_prev;
+    float iterationtime;
+    
+    //double xhat1_prev[2];
 
 
 
@@ -179,6 +205,11 @@ private:
          param_t control_mode;
 
          param_t water_depth;
+         
+         param_t rho;
+         param_t tau;
+         param_t phi;
+    
 
          param_t water_depth_pgain;
          param_t water_depth_dgain;
@@ -217,6 +248,13 @@ private:
          int control_mode;
 
          float water_depth;
+         
+         //SLIDING-MODE-OBSERVER (SMO)
+         //Declarations
+         ///Model parameters
+         float rho;
+         float tau;
+         float phi;
 
          float water_depth_pgain;
          float water_depth_dgain;
@@ -253,6 +291,13 @@ private:
      static void task_main_trampoline(int argc, char *argv[]);
 
      void control_attitude();
+    
+    float get_xhat2(float x1, float iterationtime);
+    
+    float get_xhat1(float x1, float iterationtime);
+    
+    // sat functio
+    float sat(float x, float gamma);
 
      void vehicle_attitude_setpoint_poll();
 
@@ -319,7 +364,9 @@ WaterDepthControl::WaterDepthControl() :
     _I(2, 2) = 0.4;     /**< _I_zz */
 
     time_saved  = 0;
+ 
   
+    
     
     p = 0.2;
     p_neg = -0.2;
@@ -336,6 +383,18 @@ WaterDepthControl::WaterDepthControl() :
     _pressure_time_old = 0;
     _pressure_time_new = 0;
     
+    
+    iterationtime =0;
+   // rho = 10; //Observer parameter 1.5
+   // tau = 1.5; //Observe rparameter 1.5
+   // phi = 0.4; // 0.4
+    ///Koordinaten
+    xhat1 = 0.0; //Estimated depth in m
+    xhat2 = 0.0; //Estimated velocity in m/s
+    xhat1_prev = 0;
+    //xhat1_prev[1] = 0; //Estimated depth at previous time step in m
+    xhat2_prev = 0; //Estimated velocity at previous time step in m/s
+   
    
  
 
@@ -350,6 +409,11 @@ WaterDepthControl::WaterDepthControl() :
     _params_handles.yaw_rate_p		= 	param_find("UW_YAW_RATE_P");
 
     _params_handles.control_mode    =   param_find("UW_CONTROL_MODE");
+    
+    _params_handles.rho             =   param_find("RHO");
+    _params_handles.tau             =   param_find("TAU");
+    _params_handles.phi             =   param_find("PHI");
+    
 
     _params_handles.water_depth = param_find("WATER_DEPTH");
     _params_handles.water_depth_pgain = param_find("W_D_PGAIN");
@@ -421,6 +485,10 @@ int WaterDepthControl::parameters_update()
     param_get(_params_handles.yaw_rate_p, &(_params.yaw_rate_p));
 
     param_get(_params_handles.control_mode, &(_params.control_mode));
+    
+    param_get(_params_handles.rho, &(_params.rho));
+    param_get(_params_handles.tau, &(_params.tau));
+    param_get(_params_handles.phi, &(_params.phi));
 
     param_get(_params_handles.water_depth, &(_params.water_depth));
     param_get(_params_handles.water_depth_pgain, &(_params.water_depth_pgain));
@@ -527,8 +595,31 @@ void WaterDepthControl::control_state_poll()
     }
 }
 
+float WaterDepthControl::get_xhat2(float x1, float time) {
+    
+    xhat1 = get_xhat1(x1, time);
+    
+    
+   // xhat2 = xhat2_prev + (iterationtime / (0.1 * tau))* (-xhat2_prev - rho * sat(xhat1 - x1,1));
+    xhat2 = xhat2_prev + (time / _params.tau) * (-xhat2_prev - _params.rho * sat(xhat1 - x1,_params.phi));
+    
+    xhat2_prev = xhat2;
+        return xhat2;
+}
+                                                            
 
+float WaterDepthControl::get_xhat1(float x1, float time) {
+    //xhat1 = xhat1_prev - (iterationtime / 0.1) * rho * sat(xhat1_prev - x1, 1);
+        xhat1 = xhat1_prev - (time / 1) * _params.rho * sat(xhat1_prev - x1, _params.phi);
+    xhat1_prev = xhat1;
+    return xhat1;
+}
 
+// sat functio
+float WaterDepthControl::sat(float x, float gamma) {
+    float y = math::max(math::min(1.0f, x / gamma), -1.0f);
+    return y;
+}
 
 
 
@@ -549,43 +640,82 @@ void WaterDepthControl::control_attitude()
                 _p_zero = press.pressure_mbar;
                 counter = 0;
             }
+    
 
-
-            _pressure_set = _roh_g * _params.water_depth + _p_zero;
+            _pressure_set = _roh_g * _params.water_depth + _p_zero; //mbar
     
             _pressure_new = press.pressure_mbar;
     
             _pressure_time_new = hrt_absolute_time();
+    
+    float deep = ( _pressure_new - _p_zero ) / ( _roh_g );
+    
+//    PX4_INFO("Pressure_new:\t%8.4f\t%8.4f",
+//             (double)_pressure_new,
+//             (double)_pressure_time_new);
+    
+    
+//    PX4_INFO("Pressure_old:\t%8.4f\t%8.4f",
+//             (double)_pressure_old,
+//             (double)_pressure_time_old);
+    iterationtime = _pressure_time_new - _pressure_time_old;
+    iterationtime = iterationtime * 0.0000015f;
+   
+
+    
+    //_pressure_dt = get_xhat2(_pressure_new,iterationtime);
+    _pressure_dt = get_xhat2(deep,iterationtime);
+    
 
 
     
-            //d-control
-            _pressure_dt = ((_pressure_new - _pressure_old) / (_pressure_time_new - _pressure_time_old)) * 10000000;
+                //d-control
+                //  _pressure_dt = ((_pressure_new - _pressure_old) / (_pressure_time_new - _pressure_time_old)) * 10000000;
 
+                    //   PX4_INFO("Pressure_dt:\t%8.4f",
+                    //            (double)_pressure_dt);
 
-
-            _pressure_old = _pressure_new;
+            //_pressure_old = _pressure_new;
             _pressure_time_old = _pressure_time_new;
+
+    //calculate deep error
+    float deep_err = deep - _params.water_depth;
+    float deep_err2 = deep_err - _pressure_dt * _params.water_depth_dgain;
+    
+    float control_depth = _params.water_depth_pgain * deep_err2;
+    
+
+    
+    if (hrt_absolute_time() - time_saved  > 50000){
+        PX4_INFO("Deep, ItTime, Dt, Err, Err2, Control_depth:\t%8.4f\t%8.4f\t%8.4f\t%8.4f\t%8.4f\t%8.4f",
+                 (double)deep,
+                 (double)iterationtime,
+                 (double)_pressure_dt,
+                 (double)deep_err,
+                 (double)deep_err2,
+                 (double)control_depth);
+        time_saved = hrt_absolute_time();
+    }
 
     
             //calculate pressure error
-            float pressure_err =  press.pressure_mbar - _pressure_set;
+        //    float pressure_err =  press.pressure_mbar - _pressure_set;
          //   float pressure_err2 = pressure_err - _pressure_dt * _params.water_depth_dgain;
 
-     //       PX4_INFO("Pressure_err:\t%8.4f",
-     //                                (double)pressure_err);
+      //      PX4_INFO("Pressure_err:\t%8.4f",
+            //                         (double)pressure_err);
 
             //p-control
-            float control_depth =  _params.water_depth_pgain * pressure_err;
+         //   float control_depth =  _params.water_depth_pgain * pressure_err;
 
-     //       PX4_INFO("Control_depth_P:\t%8.4f",
-     //                                (double)control_depth);
+        //    PX4_INFO("Control_depth_P:\t%8.4f",
+          //                           (double)control_depth);
     
             //pd-control
-            float control_depth2 = control_depth - _pressure_dt * _params.water_depth_dgain;
+          //  float control_depth2 = control_depth - _pressure_dt * _params.water_depth_dgain;
 
-     //       PX4_INFO("Control_depth_PD:\t%8.4f",
-      //                               (double)control_depth2);
+           // PX4_INFO("Control_depth_PD:\t%8.4f",
+             //                        (double)control_depth2);
     
             //pd-control * gain
       //      control_depth = _params.water_depth_pgain * pressure_err2;
@@ -593,12 +723,22 @@ void WaterDepthControl::control_attitude()
 
 
 
-
+/*
             if (control_depth2 < -1 || control_depth2 > 1){
                 control_depth2 = 0;
             }else{
                 control_depth2 = control_depth2;
             }
+    */
+  /*
+    if (control_depth2 < -1){
+        control_depth2 = -1;
+    }
+    
+    if (control_depth2 > 1){
+        control_depth2 = 1;
+    }
+    
 
     
             if(press.pressure_mbar > 1300){
@@ -607,14 +747,15 @@ void WaterDepthControl::control_attitude()
                     delete water_depth_control::g_control;
                     water_depth_control::g_control = nullptr;
             }
-
-    /*        PX4_INFO("Pressure, Pressure_P, Pressure_PD, Control_Depth:\t%8.4f\t%8.4f\t%8.4f\t%8.4f",
+   */
+/*
+            PX4_INFO("Pressure, Pressure_DT, Error, Control_PD:\t%8.4f\t%8.4f\t%8.4f\t%8.4f",
                                             (double)press.pressure_mbar,
+                                            (double)_pressure_dt,
                                             (double)pressure_err,
-                                            (double)pressure_err2,
                                             (double)control_depth2);
-                                            */
-
+*/
+/*
             if (hrt_absolute_time() - time_saved  > 500000){
                 PX4_INFO("Pressure, Error, C_D_P, C_D_PD:\t%8.4f\t%8.4f\t%8.4f\t%8.4f",
                                                 (double)press.pressure_mbar,
@@ -624,7 +765,7 @@ void WaterDepthControl::control_attitude()
                time_saved = hrt_absolute_time();
             }
 
-
+*/
 
     
     /* pressure sensor control end */
@@ -633,29 +774,29 @@ void WaterDepthControl::control_attitude()
     /* geometric control start */
     
              // get control gains
-             _R_sp(0, 0) = _params.r_sp_xx;       /**< _att_p_gain_xx */
-             _R_sp(1, 0) = _params.r_sp_yx;       /**< _att_p_gain_yx */
-             _R_sp(2, 0) = _params.r_sp_zx;       /**< _att_p_gain_zx */
-             _R_sp(0, 1) = _params.r_sp_xy;       /**< _att_p_gain_xy */
-             _R_sp(1, 1) = _params.r_sp_yy;       /**< _att_p_gain_yy */
-             _R_sp(2, 1) = _params.r_sp_zy;       /**< _att_p_gain_zy */
-             _R_sp(0, 2) = _params.r_sp_xz;       /**< _att_p_gain_xz */
-             _R_sp(1, 2) = _params.r_sp_yz;       /**< _att_p_gain_yz */
-             _R_sp(2, 2) = _params.r_sp_zz;       /**< _att_p_gain_zz */
+//             _R_sp(0, 0) = _params.r_sp_xx;       /**< _att_p_gain_xx */
+//            _R_sp(1, 0) = _params.r_sp_yx;       /**< _att_p_gain_yx */
+//             _R_sp(2, 0) = _params.r_sp_zx;       /**< _att_p_gain_zx */
+//             _R_sp(0, 1) = _params.r_sp_xy;       /**< _att_p_gain_xy */
+//             _R_sp(1, 1) = _params.r_sp_yy;       /**< _att_p_gain_yy */
+//             _R_sp(2, 1) = _params.r_sp_zy;       /**< _att_p_gain_zy */
+//             _R_sp(0, 2) = _params.r_sp_xz;       /**< _att_p_gain_xz */
+//             _R_sp(1, 2) = _params.r_sp_yz;       /**< _att_p_gain_yz */
+//             _R_sp(2, 2) = _params.r_sp_zz;       /**< _att_p_gain_zz */
 
             // get current rotation matrix from control state quaternions
-            math::Quaternion q_att(_ctrl_state.q[0], _ctrl_state.q[1], _ctrl_state.q[2], _ctrl_state.q[3]);
-            math::Matrix<3, 3> R = q_att.to_dcm();
+//            math::Quaternion q_att(_ctrl_state.q[0], _ctrl_state.q[1], _ctrl_state.q[2], _ctrl_state.q[3]);
+//            math::Matrix<3, 3> R = q_att.to_dcm();
     
             // get current rates
-            math::Vector <3> omega;
-            omega(0) = _v_att.rollspeed;
-            omega(1) = _v_att.pitchspeed;
-            omega(2) = _v_att.yawspeed;
+//            math::Vector <3> omega;
+//            omega(0) = _v_att.rollspeed;
+//            omega(1) = _v_att.pitchspeed;
+//            omega(2) = _v_att.yawspeed;
 
     
     //Output current rotation matrix
-/*            PX4_INFO("R_x:\t%8.4f\t%8.4f\t%8.4f",
+    /*            PX4_INFO("R_x:\t%8.4f\t%8.4f\t%8.4f",
                                  (double)R(0, 0),
                                  (double)R(1, 0),
                                  (double)R(2, 0));
@@ -669,13 +810,13 @@ void WaterDepthControl::control_attitude()
                                  (double)R(0, 2),
                                  (double)R(1, 2),
                                  (double)R(2, 2));
-*/
+     */
             // Compute attitude error
-            math::Matrix<3, 3> e_R =  (_R_sp.transposed() * R - R.transposed() * _R_sp) * 0.5;
+//            math::Matrix<3, 3> e_R =  (_R_sp.transposed() * R - R.transposed() * _R_sp) * 0.5;
 
             // vee-map the error to get a vector instead of matrix e_R
            // math::Vector<3> e_R_vec(e_R(2,1), e_R(0,2), e_R(1,0));
-            math::Vector<3> e_R_vec(e_R(1,0), e_R(0,2), e_R(2,1));
+//            math::Vector<3> e_R_vec(e_R(1,0), e_R(0,2), e_R(2,1));
 
           //Output attitude error
         /*    PX4_INFO("e_R:\t%8.4f\t%8.4f\t%8.4f",
@@ -692,7 +833,7 @@ void WaterDepthControl::control_attitude()
 
 
 
-/*
+    /*
             math::Vector <3> omega;
             omega(0) = _v_att.rollspeed;
             omega(1) = _v_att.pitchspeed;
@@ -709,38 +850,33 @@ void WaterDepthControl::control_attitude()
             cross(0) = omega(1) * omega2(2) - omega(2) * omega2(1);
             cross(1) = omega(2) * omega2(0) - omega(0) * omega2(2);
             cross(2) = omega(0) * omega2(1) - omega(1) * omega2(0);
-*/
+     */
             //torques = - _att_p_gain * e_R_vec  + cross;
 
 
 
                     /* Matrix Controller Parameters Stabilization */
-                    _att_p_gain(0, 0) = _params.att_p_gain_xx;       /**< _att_p_gain_xx */
-                    _att_p_gain(1, 0) = _params.att_p_gain_yx;       /**< _att_p_gain_yx */
-                    _att_p_gain(2, 0) = _params.att_p_gain_zx;       /**< _att_p_gain_zx */
-                    _att_p_gain(0, 1) = _params.att_p_gain_xy;       /**< _att_p_gain_xy */
-                    _att_p_gain(1, 1) = _params.att_p_gain_yy;       /**< _att_p_gain_yy */
-                    _att_p_gain(2, 1) = _params.att_p_gain_zy;       /**< _att_p_gain_zy */
-                    _att_p_gain(0, 2) = _params.att_p_gain_xz;       /**< _att_p_gain_xz */
-                    _att_p_gain(1, 2) = _params.att_p_gain_yz;       /**< _att_p_gain_yz */
-                    _att_p_gain(2, 2) = _params.att_p_gain_zz;       /**< _att_p_gain_zz */
+//                    _att_p_gain(0, 0) = _params.att_p_gain_xx;       /**< _att_p_gain_xx */
+//                    _att_p_gain(1, 0) = _params.att_p_gain_yx;       /**< _att_p_gain_yx */
+//                    _att_p_gain(2, 0) = _params.att_p_gain_zx;       /**< _att_p_gain_zx */
+//                    _att_p_gain(0, 1) = _params.att_p_gain_xy;       /**< _att_p_gain_xy */
+//                    _att_p_gain(1, 1) = _params.att_p_gain_yy;       /**< _att_p_gain_yy */
+//                    _att_p_gain(2, 1) = _params.att_p_gain_zy;       /**< _att_p_gain_zy */
+//                    _att_p_gain(0, 2) = _params.att_p_gain_xz;       /**< _att_p_gain_xz */
+//                    _att_p_gain(1, 2) = _params.att_p_gain_yz;       /**< _att_p_gain_yz */
+//                    _att_p_gain(2, 2) = _params.att_p_gain_zz;       /**< _att_p_gain_zz */
 
             //p-control
             //torques(0) = roll
             //torques(1) = pitch
             //torques(2) = yaw
-            torques = - _att_p_gain * e_R_vec;
-  /*
-            PX4_INFO("torques p-control:\t%8.4f\t%8.4f\t%8.4f",
-                        (double)torques(0),
-                        (double)torques(1),
-                        (double)torques(0));
-   */
+//            torques = - _att_p_gain * e_R_vec;
+
     
             //d-control
-            torques(0) = torques(0) - omega(0) * _params.roll_rate_p;       //roll
-            torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;      //pitch
-            torques(2) = torques(2) - omega(2) * _params.yaw_rate_p;        //yaw
+//            torques(0) = torques(0) - omega(0) * _params.roll_rate_p;       //roll
+//            torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;      //pitch
+//            torques(2) = torques(2) - omega(2) * _params.yaw_rate_p;        //yaw
 
 
 
@@ -749,69 +885,23 @@ void WaterDepthControl::control_attitude()
                         (double)torques(0),
                         (double)torques(1),
                         (double)torques(2));
-*/
-
-/*
-        if (hrt_absolute_time() - time_saved  > 500000){
-           PX4_INFO("e_R and torques:\t%8.4f\t%8.4f\t%8.4f\t%8.4f\t%8.4f\t%8.4f",
-                                (double)e_R(2, 1),
-                                (double)e_R(0, 2),
-                                (double)e_R(1, 0),
-                                (double)torques(2),
-                                (double)torques(1),
-                                (double)torques(0));
-           time_saved = hrt_absolute_time();
-        }
     */
-/*
-        if (torques(1) < p && torques(1) > t){
-            torques(1) = p;
-            _att_control(1) = torques(1);    //pitch
-        }else{
-            _att_control(1) = torques(1);    //pitch
-        }
-
-        if (torques(1) > p_neg && torques(1) < t_neg){
-            torques(1) = p_neg;
-            _att_control(1) = torques(1);    //pitch
-        }else{
-            _att_control(1) = torques(1);    //pitch
-        }
 
 
+    /*
 
-        if (torques(0) < p && torques(0) > t){
-            torques(0) = p;
-            _att_control(2) = torques(0);    //yaw
-        }else{
-            _att_control(2) = torques(0);    //yaw
-        }
-
-        if (torques(0) > p_neg && torques(0) < t_neg){
-            torques(0) = p_neg;
-            _att_control(2) = torques(0);    //yaw
-        }else{
-            _att_control(2) = torques(0);    //yaw
-        }
-*/
-
-
-        /* geometric control end */
-/*
     if (hrt_absolute_time() - time_saved  > 500000){
-      //  PX4_INFO("Absolute time:\t%8.4f",
-      //           (double)hrt_absolute_time());
         
-        PX4_INFO("control_depth:\t%8.4f",
-                 (double)control_depth);
-        
-        PX4_INFO("Pitch, Yaw:\t%8.4f\t%8.4f",
-                 (double)torques(1),
-                 (double)torques(2));
-        
+    
+ 
+        PX4_INFO("DT, PD:\t%8.4f\t%8.4f",
+                      (double)_pressure_dt,
+                      (double)control_depth2);
+  
         time_saved = hrt_absolute_time();
     }
-*/
+   */
+ 
             //torques(0) = roll
             //torques(1) = pitch
             //torques(2) = yaw
@@ -821,11 +911,11 @@ void WaterDepthControl::control_attitude()
          //   _att_control(0) = torques(0);    //roll
          //      _att_control(1) = torques(1);    //pitch
          //     _att_control(2) = torques(2);    //yaw
-              _thrust_sp = control_depth2;
+              _thrust_sp = control_depth;
 
-             // PX4_INFO("ENDE der Schleife");
+            //  PX4_INFO("ENDE der Schleife");
 
-         //   usleep(1000000);
+        //    usleep(10000);
 }
 
 
