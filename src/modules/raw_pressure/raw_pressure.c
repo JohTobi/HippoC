@@ -50,14 +50,22 @@
 #include <uORB/topics/sensor_combined.h>
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/pressure.h>
+#include <uORB/topics/vehicle_local_position.h>
 
 int _pressure_sub;
+
+
 
 __EXPORT int raw_pressure_main(int argc, char *argv[]);
 
 int raw_pressure_main(int argc, char *argv[])
 {
-    PX4_INFO("Output raw pressure!"); 
+    PX4_INFO("Output raw pressure!");
+    
+    struct vehicle_local_position_s    _pos;  
+
+    
+     orb_advert_t _position_pub = orb_advertise(ORB_ID(vehicle_local_position), &_pos);
 
     _pressure_sub = orb_subscribe(ORB_ID(pressure));
 
@@ -91,6 +99,10 @@ int raw_pressure_main(int argc, char *argv[])
             PX4_INFO("Pressure: %8.4f\t Temperature: %8.4f",
                      (double)press.pressure_mbar,
                      (double)press.temperature_degC);
+            
+            _pos.x = press.pressure_mbar;
+            
+            orb_publish(ORB_ID(vehicle_local_position), _position_pub, &_pos);
 
         }
         }

@@ -73,6 +73,8 @@
 #include <lib/mathlib/mathlib.h>
 #include <geo/geo.h>
 #include <uORB/topics/adc_report.h> // includes ADC readings
+#include <uORB/topics/vehicle_local_position.h>
+#include <uORB/topics/att_pos_mocap.h>
 
 /**
  * Water depth control app start / stop handling function
@@ -116,6 +118,12 @@ private:
      float      _roh_g;
      float      _p_zero;
      int counter;
+    
+    float deep;
+    float deep_err;
+    float deep_err2;
+    
+    float control_depth;
 
 
      float      _det;
@@ -167,6 +175,7 @@ private:
 
 
      orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
+    orb_advert_t   _position_pub;
 
      struct control_state_s             _ctrl_state;    /**< control state */
      struct vehicle_rates_setpoint_s    _v_rates_sp;    /**< vehicle rates setpoint */
@@ -174,6 +183,7 @@ private:
      struct actuator_controls_s			_actuators;			/**< actuator controls */
      struct vehicle_attitude_s           _v_att;             /**< vehicle attitude */
      struct adc_report_s 			_raw_adc;				/**< raw sensor values incl ADC */
+    struct vehicle_local_position_s    _pos;
 
      perf_counter_t     _loop_perf;     /**< loop performance counter */
      perf_counter_t     _controller_latency_perf;
@@ -209,6 +219,10 @@ private:
          param_t rho;
          param_t tau;
          param_t phi;
+         
+         param_t yaw_speed_sp;
+         param_t pitch_angle_sp;
+         param_t speed_sp;
     
 
          param_t water_depth_pgain;
@@ -255,6 +269,11 @@ private:
          float rho;
          float tau;
          float phi;
+         
+         float yaw_speed_sp;
+         float pitch_angle_sp;
+         float speed_sp;
+         
 
          float water_depth_pgain;
          float water_depth_dgain;
@@ -291,6 +310,8 @@ private:
      static void task_main_trampoline(int argc, char *argv[]);
 
      void control_attitude();
+    
+    void control_helix();
     
     float get_xhat2(float x1, float iterationtime);
     
@@ -366,7 +387,7 @@ WaterDepthControl::WaterDepthControl() :
     time_saved  = 0;
  
   
-    
+    deep = 0;
     
     p = 0.2;
     p_neg = -0.2;
@@ -414,6 +435,10 @@ WaterDepthControl::WaterDepthControl() :
     _params_handles.tau             =   param_find("TAU");
     _params_handles.phi             =   param_find("PHI");
     
+    _params_handles.yaw_speed_sp    =   param_find("UWC_YAW_RATE_SP");
+    _params_handles.pitch_angle_sp  =   param_find("UWC_PITCH_SP");
+    _params_handles.speed_sp        =   param_find("UWC_SPEED_SP");
+
 
     _params_handles.water_depth = param_find("WATER_DEPTH");
     _params_handles.water_depth_pgain = param_find("W_D_PGAIN");
@@ -489,6 +514,10 @@ int WaterDepthControl::parameters_update()
     param_get(_params_handles.rho, &(_params.rho));
     param_get(_params_handles.tau, &(_params.tau));
     param_get(_params_handles.phi, &(_params.phi));
+    
+    param_get(_params_handles.yaw_speed_sp, &(_params.yaw_speed_sp));
+     param_get(_params_handles.pitch_angle_sp, &(_params.pitch_angle_sp));
+     param_get(_params_handles.speed_sp, &(_params.speed_sp));
 
     param_get(_params_handles.water_depth, &(_params.water_depth));
     param_get(_params_handles.water_depth_pgain, &(_params.water_depth_pgain));
@@ -621,7 +650,68 @@ float WaterDepthControl::sat(float x, float gamma) {
     return y;
 }
 
+void WaterDepthControl::control_helix()
+{
+    
+    struct pressure_s press;
+    
+    orb_copy(ORB_ID(pressure), _pressure_raw, &press);
+    
+    
+    if (counter == 1){
+        _p_zero = press.pressure_mbar;
+        counter = 0;
+    }
+    
+    //_pressure_set = _roh_g * _params.water_depth + _p_zero; //mbar
+    
+    float my_depth;
+    my_depth = ( press.pressure_mbar - _p_zero ) / ( _roh_g );
+    
+    float pitch_fac = 1.0;
+    if (my_depth > _params.water_depth)
+    {
+        pitch_fac = -1.0;
+    }
+    
+   //   PX4_INFO("MyDepth:\t%8.4f",
+   //           (double)my_depth);
+    
+    float pitch_angle = _params.pitch_angle_sp * pitch_fac ;
+    
+    float sr = sinf(_v_att.roll);
+    float cr = cosf(_v_att.roll);
+    
+    
+    float yaw_p = _params.rho;
+    float pitch_p = _params.tau;
+    float roll_p = _params.phi;
+    float roll_rate_p = _params.r_sp_xx;
+    
+    //p-control
+    float control_pitch = (( pitch_angle-_v_att.pitch) * pitch_p)*cr+(_params.yaw_speed_sp * yaw_p)*sr;
+    float control_yaw = (_params.yaw_speed_sp * yaw_p)*cr - (((pitch_angle-_v_att.pitch) ) * pitch_p)*sr;
+    
+    //d-control
+    //control_pitch=control_pitch - _v_att.pitchspeed * _params.pitch_rate_p*cr;
+    //control_yaw=control_yaw - _v_att.yawspeed * _params.yaw_rate_p*sr;
+    
+    
+    
+    _att_control(0) = - _v_att.roll * roll_p - _v_att.rollspeed * roll_rate_p;
+    _att_control(1) = control_pitch;
+    _att_control(2) = control_yaw;
+    _thrust_sp=_params.speed_sp;
+    
+   // PX4_INFO("Control0, Control1, Control2, Thrust:\t%8.4f\t%8.4f\t%8.4f\t%8.4f",
+   //                     (double)_att_control(0),
+   //          (double)_att_control(1),
+   //          (double)_att_control(2),
+   //          (double)_thrust_sp);
+             
+    
 
+}
 
 
 //define Pressure Depth Control
@@ -642,17 +732,14 @@ void WaterDepthControl::control_attitude()
             }
     
 
-            _pressure_set = _roh_g * _params.water_depth + _p_zero; //mbar
+      //      _pressure_set = _roh_g * _params.water_depth + _p_zero; //mbar
     
             _pressure_new = press.pressure_mbar;
     
             _pressure_time_new = hrt_absolute_time();
     
-    float deep = ( _pressure_new - _p_zero ) / ( _roh_g );
-    
-//    PX4_INFO("Pressure_new:\t%8.4f\t%8.4f",
-//             (double)_pressure_new,
-//             (double)_pressure_time_new);
+    deep = ( _pressure_new - _p_zero ) / ( _roh_g );
+
     
     
 //    PX4_INFO("Pressure_old:\t%8.4f\t%8.4f",
@@ -672,21 +759,29 @@ void WaterDepthControl::control_attitude()
                 //d-control
                 //  _pressure_dt = ((_pressure_new - _pressure_old) / (_pressure_time_new - _pressure_time_old)) * 10000000;
 
-                    //   PX4_INFO("Pressure_dt:\t%8.4f",
-                    //            (double)_pressure_dt);
+             
 
             //_pressure_old = _pressure_new;
             _pressure_time_old = _pressure_time_new;
 
     //calculate deep error
-    float deep_err = deep - _params.water_depth;
-    float deep_err2 = deep_err - _pressure_dt * _params.water_depth_dgain;
+    deep_err = deep - _params.water_depth;
     
-    float control_depth = _params.water_depth_pgain * deep_err2;
     
-
+  //  PX4_INFO("Deep, ItTime:\t%8.4f\t%8.4f",
+   //          (double)deep,
+     //        (double)deep_err);
+    deep_err2 = deep_err - _pressure_dt * _params.water_depth_dgain;
     
-    if (hrt_absolute_time() - time_saved  > 50000){
+    control_depth = _params.water_depth_pgain * deep_err2;
+    
+   // _pos.x = deep;
+   // _pos.y = _pressure_dt;
+   // _pos.z = deep_err;
+   // _pos.vx = deep_err2;
+   // _pos.vy = control_depth;
+    
+/*    if (hrt_absolute_time() - time_saved  > 50000){
         PX4_INFO("Deep, ItTime, Dt, Err, Err2, Control_depth:\t%8.4f\t%8.4f\t%8.4f\t%8.4f\t%8.4f\t%8.4f",
                  (double)deep,
                  (double)iterationtime,
@@ -696,7 +791,7 @@ void WaterDepthControl::control_attitude()
                  (double)control_depth);
         time_saved = hrt_absolute_time();
     }
-
+*/
     
             //calculate pressure error
         //    float pressure_err =  press.pressure_mbar - _pressure_set;
@@ -911,11 +1006,11 @@ void WaterDepthControl::control_attitude()
          //   _att_control(0) = torques(0);    //roll
          //      _att_control(1) = torques(1);    //pitch
          //     _att_control(2) = torques(2);    //yaw
-              _thrust_sp = control_depth;
+          //    _thrust_sp = control_depth;
 
             //  PX4_INFO("ENDE der Schleife");
 
-        //    usleep(10000);
+            //usleep(10000);
 }
 
 
@@ -932,13 +1027,14 @@ void WaterDepthControl::task_main()
     _ctrl_state_sub = orb_subscribe(ORB_ID(control_state));
 
 
-
-
     /* initialize parameters cache */
     parameters_update();
 
     /* advertise actuator controls */
     _actuators_0_pub = orb_advertise(ORB_ID(actuator_controls_0), &_actuators);
+    _position_pub = orb_advertise(ORB_ID(vehicle_local_position), &_pos);
+    
+    
 
     px4_pollfd_struct_t fds[1];
 
@@ -976,7 +1072,8 @@ void WaterDepthControl::task_main()
             parameter_update_poll();
 
             //start controller
-            control_attitude();
+           // control_attitude();
+            control_helix();
 
             //get ADC value and print it for debugging
             raw_adc_data_poll();
@@ -986,8 +1083,6 @@ void WaterDepthControl::task_main()
 
 
 
-
-            //thrust begins at 0.219
 
 
 
@@ -999,8 +1094,19 @@ void WaterDepthControl::task_main()
             _actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
             _actuators.timestamp = hrt_absolute_time();
             _actuators.timestamp_sample = _v_att.timestamp;
+            
+            
+            
+            //_pos.x = _pressure_new;
+            //_pos.x = _pressure_dt;
+            _pos.x = deep;
+            _pos.y = _pressure_dt;
+            _pos.vx = deep_err;
+            _pos.vy = control_depth;
 
             orb_publish(ORB_ID(actuator_controls_0), _actuators_0_pub, &_actuators);
+            orb_publish(ORB_ID(vehicle_local_position), _position_pub, &_pos);
+           
 
             perf_end(_controller_latency_perf);
        }
