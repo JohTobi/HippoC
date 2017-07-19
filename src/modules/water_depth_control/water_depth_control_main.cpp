@@ -168,6 +168,9 @@ private:
     float xhat2_prev;
     float iterationtime;
     
+    float output_xhat1;
+    float output_xhat2;
+    
     //double xhat1_prev[2];
 
 
@@ -636,14 +639,16 @@ float WaterDepthControl::get_xhat2(float x1, float time) {
     xhat2 = xhat2_prev + (time / _params.tau) * (-xhat2_prev - _params.rho * sat(xhat1 - x1,_params.phi));
     
     xhat2_prev = xhat2;
-        return xhat2;
+    output_xhat2 = xhat2;
+        return xhat2; //xhat2 = geschätzte Geschwindigkeit
 }
                                                             
 
 float WaterDepthControl::get_xhat1(float x1, float time) {
     //xhat1 = xhat1_prev - (iterationtime / 0.1) * rho * sat(xhat1_prev - x1, 1);
         xhat1 = xhat1_prev - (time / 1) * _params.rho * sat(xhat1_prev - x1, _params.phi);
-    xhat1_prev = xhat1;
+    xhat1_prev = xhat1; //xhat1 = geschätzte Tiefe
+    output_xhat1 = xhat1;
     return xhat1;
 }
 
@@ -707,171 +712,105 @@ void WaterDepthControl::control_attitude()
 
             control_state_poll();
 
-            /* pressure sensor control start */
-                struct pressure_s press;
+    /* pressure sensor control start */
+            struct pressure_s press;
     
-                /* get pressure value from sensor*/
-                orb_copy(ORB_ID(pressure), _pressure_raw, &press);
+            /* get pressure value from sensor*/
+            orb_copy(ORB_ID(pressure), _pressure_raw, &press);
 
-                /* set surface air pressure  */
-                if (counter == 1){
-                    _p_zero = press.pressure_mbar;
-                    counter = 0;
-                }
+            /* set surface air pressure  */
+            if (counter == 1){
+                _p_zero = press.pressure_mbar;
+                counter = 0;
+            }
     
-                /* calculate pressure setpoint */
-                //_pressure_set = _roh_g * _params.water_depth_sp + _p_zero; //mbar
+            /* calculate pressure setpoint */
+            //_pressure_set = _roh_g * _params.water_depth_sp + _p_zero; //mbar
     
-                /* set actual pressure from the sensor and absolute time to a new controler value */
-                _pressure_new = press.pressure_mbar;
-                _pressure_time_new = hrt_absolute_time();
+            /* set actual pressure from the sensor and absolute time to a new controler value */
+            _pressure_new = press.pressure_mbar;
+            _pressure_time_new = hrt_absolute_time();
     
-                /* calculate actual water depth */
-                water_depth = ( _pressure_new - _p_zero ) / ( _roh_g ); //unit meter
+            /* calculate actual water depth */
+            water_depth = ( _pressure_new - _p_zero ) / ( _roh_g ); //unit meter
 
-                /* calculate iterationtime for Sliding Mode Observer */
-                iterationtime = _pressure_time_new - _pressure_time_old;
-                /* scale interationtime*/
-                iterationtime = iterationtime * 0.0000015f;
+            /* calculate iterationtime for Sliding Mode Observer */
+            iterationtime = _pressure_time_new - _pressure_time_old;
+            /* scale interationtime*/
+            iterationtime = iterationtime * 0.0000015f;
    
 
-                /* calculate d-component of the controler by using a Sliding Mode Observer for accounting possible future trends of the error */
-                //_pressure_dt = get_xhat2(_pressure_new,iterationtime);
-                _pressure_dt = get_xhat2(water_depth,iterationtime);
+            /* calculate d-component of the controler by using a Sliding Mode Observer for accounting possible future trends of the error */
+            //_pressure_dt = get_xhat2(_pressure_new,iterationtime);
+            _pressure_dt = get_xhat2(water_depth,iterationtime);
     
-                /* calculate the d-component of the controler by using a difference quotient */
-                //_pressure_dt = ((_pressure_new - _pressure_old) / (_pressure_time_new - _pressure_time_old)) * 10000000;
+            /* calculate the d-component of the controler by using a difference quotient */
+            //_pressure_dt = ((_pressure_new - _pressure_old) / (_pressure_time_new - _pressure_time_old)) * 10000000;
 
-                /* set actual pressure from the sensor and absolute time to a "old" controler value */
-                //_pressure_old = _pressure_new;
-                _pressure_time_old = _pressure_time_new;
+            /* set actual pressure from the sensor and absolute time to a "old" controler value */
+            //_pressure_old = _pressure_new;
+            _pressure_time_old = _pressure_time_new;
 
-                /* calculate the water depth error */
-                water_depth_err = water_depth - _params.water_depth_sp;
+            /* calculate the water depth error */
+            water_depth_err = water_depth - _params.water_depth_sp;
     
-                /* use a pd-controller for water depth error*/
-                water_depth_pd_err = water_depth_err - _pressure_dt * _params.water_depth_dgain;
-                    /* multiply with a p-gain */
-                    control_depth = _params.water_depth_pgain * water_depth_pd_err;
+            /* use a pd-controller for water depth error*/
+            water_depth_pd_err = water_depth_err - _pressure_dt * _params.water_depth_dgain;
+                 /* multiply with a p-gain */
+                 control_depth = _params.water_depth_pgain * water_depth_pd_err;
     
-                // _pos.x = deep;
-                // _pos.y = _pressure_dt;
-                // _pos.z = deep_err;
-                // _pos.vx = deep_err2;
-                // _pos.vy = control_depth;
-    
-            /*
-                if (control_depth2 < -1 || control_depth2 > 1){
-                    control_depth2 = 0;
-                }else{
-                    control_depth2 = control_depth2;
-                }
-            */
-
-                /* Stop engine if pressure sensor will crash */
-                if(press.pressure_mbar > 1500){
-                    PX4_WARN("Pressure Sensor crashed");
-                    control_depth = 0;
-                    delete water_depth_control::g_control;
-                    water_depth_control::g_control = nullptr;
-                }
-            /* pressure sensor control end */
+    /* pressure sensor control end */
     
 
     /* geometric control start */
     
-             // get control gains
-//             _R_sp(0, 0) = _params.r_sp_xx;       /**< _att_p_gain_xx */
-//            _R_sp(1, 0) = _params.r_sp_yx;       /**< _att_p_gain_yx */
-//             _R_sp(2, 0) = _params.r_sp_zx;       /**< _att_p_gain_zx */
-//             _R_sp(0, 1) = _params.r_sp_xy;       /**< _att_p_gain_xy */
-//             _R_sp(1, 1) = _params.r_sp_yy;       /**< _att_p_gain_yy */
-//             _R_sp(2, 1) = _params.r_sp_zy;       /**< _att_p_gain_zy */
-//             _R_sp(0, 2) = _params.r_sp_xz;       /**< _att_p_gain_xz */
-//             _R_sp(1, 2) = _params.r_sp_yz;       /**< _att_p_gain_yz */
-//             _R_sp(2, 2) = _params.r_sp_zz;       /**< _att_p_gain_zz */
 
-            // get current rotation matrix from control state quaternions
-//            math::Quaternion q_att(_ctrl_state.q[0], _ctrl_state.q[1], _ctrl_state.q[2], _ctrl_state.q[3]);
-//            math::Matrix<3, 3> R = q_att.to_dcm();
+            /* get parameters for geometric control */
+
+                /* Orientation Matrix Setpoint */
+                _R_sp(0, 0) = _params.r_sp_xx;       /**< _att_p_gain_xx */
+                _R_sp(1, 0) = _params.r_sp_yx;       /**< _att_p_gain_yx */
+                _R_sp(2, 0) = _params.r_sp_zx;       /**< _att_p_gain_zx */
+                _R_sp(0, 1) = _params.r_sp_xy;       /**< _att_p_gain_xy */
+                _R_sp(1, 1) = _params.r_sp_yy;       /**< _att_p_gain_yy */
+                _R_sp(2, 1) = _params.r_sp_zy;       /**< _att_p_gain_zy */
+                _R_sp(0, 2) = _params.r_sp_xz;       /**< _att_p_gain_xz */
+                _R_sp(1, 2) = _params.r_sp_yz;       /**< _att_p_gain_yz */
+                _R_sp(2, 2) = _params.r_sp_zz;       /**< _att_p_gain_zz */
     
-            // get current rates
-//            math::Vector <3> omega;
-//            omega(0) = _v_att.rollspeed;
-//            omega(1) = _v_att.pitchspeed;
-//            omega(2) = _v_att.yawspeed;
+                /* Matrix P-Gains */
+                _att_p_gain(0, 0) = _params.att_p_gain_xx;       /**< _att_p_gain_xx */
+                _att_p_gain(1, 0) = _params.att_p_gain_yx;       /**< _att_p_gain_yx */
+                _att_p_gain(2, 0) = _params.att_p_gain_zx;       /**< _att_p_gain_zx */
+                _att_p_gain(0, 1) = _params.att_p_gain_xy;       /**< _att_p_gain_xy */
+                _att_p_gain(1, 1) = _params.att_p_gain_yy;       /**< _att_p_gain_yy */
+                _att_p_gain(2, 1) = _params.att_p_gain_zy;       /**< _att_p_gain_zy */
+                _att_p_gain(0, 2) = _params.att_p_gain_xz;       /**< _att_p_gain_xz */
+                _att_p_gain(1, 2) = _params.att_p_gain_yz;       /**< _att_p_gain_yz */
+                _att_p_gain(2, 2) = _params.att_p_gain_zz;       /**< _att_p_gain_zz */
 
+            /* get current rotation matrix from control state quaternions */
+            math::Quaternion q_att(_ctrl_state.q[0], _ctrl_state.q[1], _ctrl_state.q[2], _ctrl_state.q[3]);
+            math::Matrix<3, 3> R = q_att.to_dcm();
     
-    //Output current rotation matrix
-    /*            PX4_INFO("R_x:\t%8.4f\t%8.4f\t%8.4f",
-                                 (double)R(0, 0),
-                                 (double)R(1, 0),
-                                 (double)R(2, 0));
-
-            PX4_INFO("R_y:\t%8.4f\t%8.4f\t%8.4f",
-                                 (double)R(0, 1),
-                                 (double)R(1, 1),
-                                 (double)R(2, 1));
-
-            PX4_INFO("R_z:\t%8.4f\t%8.4f\t%8.4f",
-                                 (double)R(0, 2),
-                                 (double)R(1, 2),
-                                 (double)R(2, 2));
-     */
-            // Compute attitude error
-//            math::Matrix<3, 3> e_R =  (_R_sp.transposed() * R - R.transposed() * _R_sp) * 0.5;
-
-            // vee-map the error to get a vector instead of matrix e_R
-           // math::Vector<3> e_R_vec(e_R(2,1), e_R(0,2), e_R(1,0));
-//            math::Vector<3> e_R_vec(e_R(1,0), e_R(0,2), e_R(2,1));
-
-          //Output attitude error
-        /*    PX4_INFO("e_R:\t%8.4f\t%8.4f\t%8.4f",
-                                 (double)e_R(2, 1),         //yaw
-                                 (double)e_R(0, 2),         //pitch
-                                 (double)e_R(1, 0));        //roll
-            */
-
-            /*    PX4_INFO("e_R:\t%8.4f\t%8.4f\t%8.4f",
-                                     (double)e_R(1, 0),         //roll
-                                     (double)e_R(0, 2),         //pitch
-                                     (double)e_R(2, 1));        //yaw
-                */
-
-
-
-    /*
+            /* get current rates from sensors */
             math::Vector <3> omega;
             omega(0) = _v_att.rollspeed;
             omega(1) = _v_att.pitchspeed;
             omega(2) = _v_att.yawspeed;
+    
+            /* Compute attitude error */
+            math::Matrix<3, 3> e_R =  (_R_sp.transposed() * R - R.transposed() * _R_sp) * 0.5;
 
 
-            math::Vector <3> omega2;
-            omega2(0) = _I(0, 0) * omega(0);
-            omega2(1) = _I(1, 1) * omega(1);
-            omega2(2) = _I(2, 2) * omega(2);
+            /* vee-map the error to get a vector instead of matrix e_R */
+            //math::Vector<3> e_R_vec(e_R(2,1), e_R(0,2), e_R(1,0));
+            math::Vector<3> e_R_vec(e_R(1,0), e_R(0,2), e_R(2,1));
 
-
-            math::Vector<3> cross;
-            cross(0) = omega(1) * omega2(2) - omega(2) * omega2(1);
-            cross(1) = omega(2) * omega2(0) - omega(0) * omega2(2);
-            cross(2) = omega(0) * omega2(1) - omega(1) * omega2(0);
-     */
-            //torques = - _att_p_gain * e_R_vec  + cross;
-
-
-
-                    /* Matrix Controller Parameters Stabilization */
-//                    _att_p_gain(0, 0) = _params.att_p_gain_xx;       /**< _att_p_gain_xx */
-//                    _att_p_gain(1, 0) = _params.att_p_gain_yx;       /**< _att_p_gain_yx */
-//                    _att_p_gain(2, 0) = _params.att_p_gain_zx;       /**< _att_p_gain_zx */
-//                    _att_p_gain(0, 1) = _params.att_p_gain_xy;       /**< _att_p_gain_xy */
-//                    _att_p_gain(1, 1) = _params.att_p_gain_yy;       /**< _att_p_gain_yy */
-//                    _att_p_gain(2, 1) = _params.att_p_gain_zy;       /**< _att_p_gain_zy */
-//                    _att_p_gain(0, 2) = _params.att_p_gain_xz;       /**< _att_p_gain_xz */
-//                    _att_p_gain(1, 2) = _params.att_p_gain_yz;       /**< _att_p_gain_yz */
-//                    _att_p_gain(2, 2) = _params.att_p_gain_zz;       /**< _att_p_gain_zz */
+ //   PX4_INFO("Roll, Pitch, Yaw:\t%8.4f\t%8.4f\t%8.4f",
+   //          (double)e_R(1,0),
+     //       (double)e_R(0,2),
+       //    (double)e_R(2,1));
 
             //p-control
             //torques(0) = roll
@@ -879,50 +818,26 @@ void WaterDepthControl::control_attitude()
             //torques(2) = yaw
 //            torques = - _att_p_gain * e_R_vec;
 
+            torques(0) = e_R(1,0) * _att_p_gain(0, 0);  //yaw
+            torques(1) = e_R(0,2) * _att_p_gain(1, 1);  //pitch
+            torques(2) = e_R(2,1) * _att_p_gain(2, 2);  //roll
     
-            //d-control
-//            torques(0) = torques(0) - omega(0) * _params.roll_rate_p;       //roll
-//            torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;      //pitch
-//            torques(2) = torques(2) - omega(2) * _params.yaw_rate_p;        //yaw
-
-
-
-   /*
-            PX4_INFO("torques d-control:\t%8.4f\t%8.4f\t%8.4f",
-                        (double)torques(0),
-                        (double)torques(1),
-                        (double)torques(2));
-    */
-
-
-    /*
-
-    if (hrt_absolute_time() - time_saved  > 500000){
-        
+    //pd-control
+         //   torques(0) = torques(0) - omega(0) * _params.roll_rate_p;       //roll
+         //   torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;      //pitch
+         //   torques(2) = torques(2) - omega(2) * _params.yaw_rate_p;        //yaw
     
- 
-        PX4_INFO("DT, PD:\t%8.4f\t%8.4f",
-                      (double)_pressure_dt,
-                      (double)control_depth2);
+
+    
+
+    
+              _att_control(0) = torques(2);    //roll
+              _att_control(1) = torques(1);    //pitch
+              _att_control(2) = torques(0);    //yaw
+              _thrust_sp = control_depth;
+    
   
-        time_saved = hrt_absolute_time();
-    }
-   */
- 
-            //torques(0) = roll
-            //torques(1) = pitch
-            //torques(2) = yaw
 
-
-    
-         //   _att_control(0) = torques(0);    //roll
-         //      _att_control(1) = torques(1);    //pitch
-         //     _att_control(2) = torques(2);    //yaw
-          //    _thrust_sp = control_depth;
-
-            //  PX4_INFO("ENDE der Schleife");
-
-            //usleep(10000);
 }
 
 
@@ -992,6 +907,21 @@ void WaterDepthControl::task_main()
 
  //           PX4_INFO("ADC:\t%8.4f",
  //                                     (double)_raw_adc.channel_value[7]);
+            
+            
+            
+                     _pos.x = water_depth;
+            _pos.y = water_depth_err;                       //output_xhat1;
+            _pos.z = water_depth_pd_err;                    //_pressure_dt;
+            //_pos.vx = torques(0);           //torques(0) = yaw
+            //_pos.vy = torques(1);           //torques(1) = pitch
+            //_pos.vz = torques(2);           //torques(2) = roll
+            _pos.vx = _att_control(0);
+            _pos.vy = _att_control(1);
+            _pos.vz = _att_control(2);
+            
+            
+            
 
             
             /* publish actuator controls */
@@ -1004,13 +934,8 @@ void WaterDepthControl::task_main()
             
             
             
-            //_pos.x = _pressure_new;
-            //_pos.x = _pressure_dt;
-            _pos.x = water_depth;
-            _pos.y = _pressure_dt;
-            _pos.vx = water_depth_err;
-            _pos.vy = control_depth;
-
+   
+            
             orb_publish(ORB_ID(actuator_controls_0), _actuators_0_pub, &_actuators);
             orb_publish(ORB_ID(vehicle_local_position), _position_pub, &_pos);
            
