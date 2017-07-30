@@ -172,7 +172,7 @@ private:
     float output_xhat2;
     
     //double xhat1_prev[2];
-
+    float water_depth_smo;
 
 
      int        _adc_sub_fd;         /**< raw sensor data subscription */
@@ -741,11 +741,8 @@ void WaterDepthControl::control_attitude()
    
 
             /* calculate d-component of the controler by using a Sliding Mode Observer for accounting possible future trends of the error */
-            //_pressure_dt = get_xhat2(_pressure_new,iterationtime);
-            _pressure_dt = get_xhat2(water_depth,iterationtime);
-    
-            /* calculate the d-component of the controler by using a difference quotient */
-            //_pressure_dt = ((_pressure_new - _pressure_old) / (_pressure_time_new - _pressure_time_old)) * 10000000;
+            //_pressure_dt = get_xhat2(water_depth,iterationtime);
+            water_depth_smo = get_xhat1(water_depth,iterationtime);
 
             /* set actual pressure from the sensor and absolute time to a "old" controler value */
             //_pressure_old = _pressure_new;
@@ -755,9 +752,17 @@ void WaterDepthControl::control_attitude()
             water_depth_err = water_depth - _params.water_depth_sp;
     
             /* use a pd-controller for water depth error*/
-            water_depth_pd_err = water_depth_err - _pressure_dt * _params.water_depth_dgain;
+            water_depth_pd_err = water_depth_err - water_depth_smo * _params.water_depth_dgain;
                  /* multiply with a p-gain */
                  control_depth = _params.water_depth_pgain * water_depth_pd_err;
+    
+    if (control_depth > 1.0f){
+        control_depth = 0.9;
+    }
+    
+    if (control_depth < -1.0f){
+        control_depth = -0.9;
+    }
     
     /* pressure sensor control end */
     
@@ -795,9 +800,9 @@ void WaterDepthControl::control_attitude()
     
             /* get current rates from sensors */
             math::Vector <3> omega;
-            omega(0) = _v_att.rollspeed;
+            omega(0) = _v_att.yawspeed;
             omega(1) = _v_att.pitchspeed;
-            omega(2) = _v_att.yawspeed;
+            omega(2) = _v_att.rollspeed;
     
             /* Compute attitude error */
             math::Matrix<3, 3> e_R =  (_R_sp.transposed() * R - R.transposed() * _R_sp) * 0.5;
@@ -806,11 +811,6 @@ void WaterDepthControl::control_attitude()
             /* vee-map the error to get a vector instead of matrix e_R */
             //math::Vector<3> e_R_vec(e_R(2,1), e_R(0,2), e_R(1,0));
             math::Vector<3> e_R_vec(e_R(1,0), e_R(0,2), e_R(2,1));
-
- //   PX4_INFO("Roll, Pitch, Yaw:\t%8.4f\t%8.4f\t%8.4f",
-   //          (double)e_R(1,0),
-     //       (double)e_R(0,2),
-       //    (double)e_R(2,1));
 
             //p-control
             //torques(0) = roll
@@ -823,15 +823,13 @@ void WaterDepthControl::control_attitude()
             torques(2) = e_R(2,1) * _att_p_gain(2, 2);  //roll
     
     //pd-control
-         //   torques(0) = torques(0) - omega(0) * _params.roll_rate_p;       //roll
-         //   torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;      //pitch
-         //   torques(2) = torques(2) - omega(2) * _params.yaw_rate_p;        //yaw
+            torques(0) = torques(0) - omega(0) * _params.yaw_rate_p;       //yaw
+            torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;      //pitch
+            torques(2) = torques(2) - omega(2) * _params.roll_rate_p;        //roll
     
 
     
-
-    
-              _att_control(0) = torques(2);    //roll
+              //_att_control(0) = torques(2);    //roll
               _att_control(1) = torques(1);    //pitch
               _att_control(2) = torques(0);    //yaw
               _thrust_sp = control_depth;
@@ -909,18 +907,21 @@ void WaterDepthControl::task_main()
  //                                     (double)_raw_adc.channel_value[7]);
             
             
+            /* Show Parameters of SMO by using a Mavlink Topic and QGC */
+            //_pos.x = water_depth;             // Water Depth
+            //_pos.y = _params.water_depth_sp   // Water Depth Setpoint
+            //_pos.z = water_depth_smo;         // Water Depth Sliding Mode Observer
+            //_pos.vx = water_depth_err;        // Water Depth Error (P-Controller)
+            //_pos.vy = water_depth_pd_err;     // Water Depth Error (PD-Controller)
+            //_pos.vz = control_depth;          // Signal for Engine
             
-                     _pos.x = water_depth;
-            _pos.y = water_depth_err;                       //output_xhat1;
-            _pos.z = water_depth_pd_err;                    //_pressure_dt;
-            //_pos.vx = torques(0);           //torques(0) = yaw
-            //_pos.vy = torques(1);           //torques(1) = pitch
-            //_pos.vz = torques(2);           //torques(2) = roll
-            _pos.vx = _att_control(0);
-            _pos.vy = _att_control(1);
-            _pos.vz = _att_control(2);
-            
-            
+            /* Show Parameters of Geometric Control by using a Mavlink Topic and QGC */
+            _pos.x = water_depth;
+            _pos.y = _params.water_depth_sp;
+            _pos.z = control_depth;
+            _pos.vx = torques(0);   // Yaw
+            _pos.vy = torques(1);   // Pitch
+            _pos.vz = torques(2);   // Roll
             
 
             
@@ -932,9 +933,7 @@ void WaterDepthControl::task_main()
             _actuators.timestamp = hrt_absolute_time();
             _actuators.timestamp_sample = _v_att.timestamp;
             
-            
-            
-   
+
             
             orb_publish(ORB_ID(actuator_controls_0), _actuators_0_pub, &_actuators);
             orb_publish(ORB_ID(vehicle_local_position), _position_pub, &_pos);
