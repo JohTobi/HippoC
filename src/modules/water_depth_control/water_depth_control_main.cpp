@@ -98,88 +98,44 @@ public:
 
      int start();
  
-
-   
-   
-  
-
-
 private:
 
-     bool       _task_should_exit;      /**< if true, task_main() should exit */
-     int        _control_task;          /**< task handle */
-     float      _thrust_sp;             /**< thrust setpoint */
-     int        _ctrl_state_sub;        /**< control state subscription */
-     int        _v_att_sp_sub;          /**< vehicle attitude setpoint subscription */
-     int        _pressure_raw;
-     float      _pressure_set;
-     int        _v_att_sub;             /**< vehicle attitude subscription */
-     int        _params_sub;            /**< parameter updates subscription */
-     float      _roh_g;
-     float      _p_zero;
-     int counter;
+    bool       _task_should_exit;      /**< if true, task_main() should exit */
+    int        _control_task;          /**< task handle */
+    float      _thrust_sp;             /**< thrust setpoint */
+    int        _ctrl_state_sub;        /**< control state subscription */
+    int        _v_att_sp_sub;          /**< vehicle attitude setpoint subscription */
+    int        _pressure_raw;
+    int        _v_att_sub;             /**< vehicle attitude subscription */
+    int        _params_sub;            /**< parameter updates subscription */
+    float      _roh_g;
+    float      _p_zero;
+    int        counter;
 
     float pitch_fac;
     
-    float water_depth;
-    float water_depth_err;
-    float water_depth_pd_err;
+    float water_depth;                  /**< actual water depth in m */
+    float water_depth_err;              /**< Error actual water depth and desired water depth */
+    float water_depth_pd_err;           /**< PD-Controller: Water depth and water depth SMO */
+    float control_depth;                /**< Value for engine */
+
+    float _pressure_old;
+    float _pressure_new;
+    float _pressure_time_old;
+    float _pressure_time_new;
     
-    float control_depth;
+    /**< SLIDING-MODE-OBSERVER (SMO) */
+    float xhat1;            /**< Estimated depth in m */
+    float xhat2;            /**< Estimated velocity in m/s */
+    float xhat1_prev;       /**< Estimated depth at previous time step in m */
+    float xhat2_prev;       /**< Estimated velocity at previous time step in m/s */
+    float iterationtime;    /**< Time pro Iteration */
+    float water_depth_smo;  /**< Outcome water depth SMO in m */
+
+    int _adc_sub_fd;         /**< raw sensor data subscription */
 
 
-     float      _det;
-     float      _invdet;
-     float time_saved;
-
-    
-     float p;
-     float p_neg;
-     float t;
-     float t_neg;
-    
-    float _pressure_dt;
-     float _pressure_old;
-     float _pressure_new;
-     float _pressure_time_old;
-     float _pressure_time_new;
-    
-    
-    //SLIDING-MODE-OBSERVER (SMO)
-    //Declarations
-    ///Model parameters
-//    double rho; //Observer parameter
-//    double tau; //Observe rparameter
-//    double phi;
-    ///Koordinaten
-//    double xhat1; //Estimated depth in m
-//    double xhat2; //Estimated velocity in m/s
-    //float xhat1_prev[2]; //Estimated depth at previous time step in m
-    //float xhat2_prev[2]; //Estimated velocity at previous time step in m/s
-//    double xhat1_prev;
-//    double xhat2_prev;
-//    double iterationtime;
-
-    
-
-    float xhat1;
-    float xhat2;
-    float xhat1_prev;
-    float xhat2_prev;
-    float iterationtime;
-    
-    float output_xhat1;
-    float output_xhat2;
-    
-    //double xhat1_prev[2];
-    float water_depth_smo;
-
-
-     int        _adc_sub_fd;         /**< raw sensor data subscription */
-
-
-
-     orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
+    orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
     orb_advert_t   _position_pub;
 
      struct control_state_s             _ctrl_state;    /**< control state */
@@ -188,7 +144,7 @@ private:
      struct actuator_controls_s			_actuators;			/**< actuator controls */
      struct vehicle_attitude_s           _v_att;             /**< vehicle attitude */
      struct adc_report_s 			_raw_adc;				/**< raw sensor values incl ADC */
-    struct vehicle_local_position_s    _pos;
+     struct vehicle_local_position_s    _pos;           /**< Mavlink Topic to visualize the values*/
 
      perf_counter_t     _loop_perf;     /**< loop performance counter */
      perf_counter_t     _controller_latency_perf;
@@ -196,40 +152,32 @@ private:
 
      math::Vector<3>    _att_control;   /**< attitude control vector */
      math::Vector<3>      torques;
-     math::Vector<6>    _y;
-
+    math::Vector<3> e_R_vec;
+          math::Vector <3> omega;
+ 
      math::Matrix<3, 3> _R_sp;              /**< rotation matrix setpoint */
-     math::Matrix<3, 3> _I;                 /**< intertia tensor */
-     math::Matrix<3, 3> _att_p_gain;        /**< Matrix Controller Parameters Stabilization */
-
-
-
-
-
-
+    math::Matrix<3, 3> e_R;
+    
 
      struct {
-         param_t roll_p;
-         param_t pitch_p;
-         param_t yaw_p;
+
 
          param_t roll_rate_p;
          param_t pitch_rate_p;
          param_t yaw_rate_p;
 
-         param_t control_mode;
 
          param_t water_depth_sp;
          
-         param_t rho;
-         param_t tau;
-         param_t phi;
+         // SMO: Model parameters
+         param_t rho; // Observer parameter
+         param_t tau; // Observer parameter
+         param_t phi; // Observer parameter
          
          param_t yaw_speed_sp;
          param_t pitch_angle_sp;
          param_t speed_sp;
     
-
          param_t water_depth_pgain;
          param_t water_depth_dgain;
 
@@ -243,33 +191,21 @@ private:
          param_t r_sp_yz;
          param_t r_sp_zz;
 
-         param_t att_p_gain_xx;
-         param_t att_p_gain_yx;
-         param_t att_p_gain_zx;
-         param_t att_p_gain_xy;
-         param_t att_p_gain_yy;
-         param_t att_p_gain_zy;
-         param_t att_p_gain_xz;
-         param_t att_p_gain_yz;
-         param_t att_p_gain_zz;
+         param_t pitch_gain;
+         param_t yaw_gain;
+         param_t roll_gain;
 
      }		_params_handles;		/**< handles for interesting parameters */
 
      struct {
-         float roll_p;
-         float pitch_p;
-         float yaw_p;
 
          float roll_rate_p;
          float pitch_rate_p;
          float yaw_rate_p;
 
-         int control_mode;
-
-         float water_depth_sp;
+         float water_depth_sp;      /**> Desired water depth */
          
          //SLIDING-MODE-OBSERVER (SMO)
-         //Declarations
          ///Model parameters
          float rho;
          float tau;
@@ -278,7 +214,6 @@ private:
          float yaw_speed_sp;
          float pitch_angle_sp;
          float speed_sp;
-         
 
          float water_depth_pgain;
          float water_depth_dgain;
@@ -292,16 +227,10 @@ private:
          float r_sp_xz;
          float r_sp_yz;
          float r_sp_zz;
-
-         float att_p_gain_xx;
-         float att_p_gain_yx;
-         float att_p_gain_zx;
-         float att_p_gain_xy;
-         float att_p_gain_yy;
-         float att_p_gain_zy;
-         float att_p_gain_xz;
-         float att_p_gain_yz;
-         float att_p_gain_zz;
+         
+         float pitch_gain;
+         float yaw_gain;
+         float roll_gain;
 
      }		_params;
 
@@ -378,32 +307,17 @@ WaterDepthControl::WaterDepthControl() :
     memset(&_v_att, 0, sizeof(_v_att));
 
 
-    /* inertia tensor */
-    _I(0, 0) = 0.1;     /**< _I_xx */
-    _I(1, 0) = 0;       /**< _I_yx */
-    _I(2, 0) = 0;       /**< _I_zx */
-    _I(0, 1) = 0;       /**< _I_xy */
-    _I(1, 1) = 0.4;     /**< _I_yy */
-    _I(2, 1) = 0;       /**< _I_zy */
-    _I(0, 2) = 0;       /**< _I_xz */
-    _I(1, 2) = 0;       /**< _I_yz */
-    _I(2, 2) = 0.4;     /**< _I_zz */
-
-    time_saved  = 0;
+    
  
-  
     water_depth = 0;
     
-    p = 0.2;
-    p_neg = -0.2;
-    t = 0.1;
-    t_neg = -0.1;
+
     counter = 1;
     pitch_fac = 1.0;
 
     _roh_g = 98.1;
     
-    _pressure_dt = 0;
+
     _pressure_old = 0;
     _pressure_new = 0;
     
@@ -411,7 +325,7 @@ WaterDepthControl::WaterDepthControl() :
     _pressure_time_new = 0;
     
     
-    iterationtime =0;
+    iterationtime = 0;
    // rho = 10; //Observer parameter 1.5
    // tau = 1.5; //Observe rparameter 1.5
    // phi = 0.4; // 0.4
@@ -425,17 +339,12 @@ WaterDepthControl::WaterDepthControl() :
    
  
 
-
-    _params_handles.roll_p			= 	param_find("UW_ROLL_P");
     _params_handles.roll_rate_p		= 	param_find("UW_ROLL_RATE_P");
 
-    _params_handles.pitch_p			= 	param_find("UW_PITCH_P");
     _params_handles.pitch_rate_p	= 	param_find("UW_PITCH_RATE_P");
 
-    _params_handles.yaw_p			= 	param_find("UW_YAW_P");
     _params_handles.yaw_rate_p		= 	param_find("UW_YAW_RATE_P");
 
-    _params_handles.control_mode    =   param_find("UW_CONTROL_MODE");
     
     _params_handles.rho             =   param_find("RHO");
     _params_handles.tau             =   param_find("TAU");
@@ -461,15 +370,10 @@ WaterDepthControl::WaterDepthControl() :
     _params_handles.r_sp_yz = param_find("R_SP_YZ");
     _params_handles.r_sp_zz = param_find("R_SP_ZZ");
 
-    _params_handles.att_p_gain_xx = param_find("ATT_P_GAIN_XX");
-    _params_handles.att_p_gain_yx = param_find("ATT_P_GAIN_YX");
-    _params_handles.att_p_gain_zx = param_find("ATT_P_GAIN_ZX");
-    _params_handles.att_p_gain_xy = param_find("ATT_P_GAIN_XY");
-    _params_handles.att_p_gain_yy = param_find("ATT_P_GAIN_YY");
-    _params_handles.att_p_gain_zy = param_find("ATT_P_GAIN_ZY");
-    _params_handles.att_p_gain_xz = param_find("ATT_P_GAIN_XZ");
-    _params_handles.att_p_gain_yz = param_find("ATT_P_GAIN_YZ");
-    _params_handles.att_p_gain_zz = param_find("ATT_P_GAIN_ZZ");
+    
+    _params_handles.pitch_gain = param_find("GC_GAIN_PITCH");
+    _params_handles.yaw_gain = param_find("GC_GAIN_YAW");
+    _params_handles.roll_gain = param_find("GC_GAIN_ROLL");
 
 
     /* fetch initial parameter values */
@@ -506,16 +410,10 @@ WaterDepthControl::~WaterDepthControl()
 
 int WaterDepthControl::parameters_update()
 {
-    param_get(_params_handles.roll_p, &(_params.roll_p));
     param_get(_params_handles.roll_rate_p, &(_params.roll_rate_p));
-
-    param_get(_params_handles.pitch_p, &(_params.pitch_p));
     param_get(_params_handles.pitch_rate_p, &(_params.pitch_rate_p));
-
-    param_get(_params_handles.yaw_p, &(_params.yaw_p));
     param_get(_params_handles.yaw_rate_p, &(_params.yaw_rate_p));
 
-    param_get(_params_handles.control_mode, &(_params.control_mode));
     
     param_get(_params_handles.rho, &(_params.rho));
     param_get(_params_handles.tau, &(_params.tau));
@@ -539,15 +437,11 @@ int WaterDepthControl::parameters_update()
     param_get(_params_handles.r_sp_yz, &(_params.r_sp_yz));
     param_get(_params_handles.r_sp_zz, &(_params.r_sp_zz));
 
-    param_get(_params_handles.att_p_gain_xx, &(_params.att_p_gain_xx));
-    param_get(_params_handles.att_p_gain_yx, &(_params.att_p_gain_yx));
-    param_get(_params_handles.att_p_gain_zx, &(_params.att_p_gain_zx));
-    param_get(_params_handles.att_p_gain_xy, &(_params.att_p_gain_xy));
-    param_get(_params_handles.att_p_gain_yy, &(_params.att_p_gain_yy));
-    param_get(_params_handles.att_p_gain_zy, &(_params.att_p_gain_zy));
-    param_get(_params_handles.att_p_gain_xz, &(_params.att_p_gain_xz));
-    param_get(_params_handles.att_p_gain_yz, &(_params.att_p_gain_yz));
-    param_get(_params_handles.att_p_gain_zz, &(_params.att_p_gain_zz));
+
+    
+    param_get(_params_handles.pitch_gain, &(_params.pitch_gain));
+    param_get(_params_handles.yaw_gain, &(_params.yaw_gain));
+    param_get(_params_handles.roll_gain, &(_params.roll_gain));
 
     return OK;
 }
@@ -639,7 +533,6 @@ float WaterDepthControl::get_xhat2(float x1, float time) {
     xhat2 = xhat2_prev + (time / _params.tau) * (-xhat2_prev - _params.rho * sat(xhat1 - x1,_params.phi));
     
     xhat2_prev = xhat2;
-    output_xhat2 = xhat2;
         return xhat2; //xhat2 = geschätzte Geschwindigkeit
 }
                                                             
@@ -648,7 +541,6 @@ float WaterDepthControl::get_xhat1(float x1, float time) {
     //xhat1 = xhat1_prev - (iterationtime / 0.1) * rho * sat(xhat1_prev - x1, 1);
         xhat1 = xhat1_prev - (time / 1) * _params.rho * sat(xhat1_prev - x1, _params.phi);
     xhat1_prev = xhat1; //xhat1 = geschätzte Tiefe
-    output_xhat1 = xhat1;
     return xhat1;
 }
 
@@ -703,7 +595,7 @@ float WaterDepthControl::sat(float x, float gamma) {
     _att_control(2) = control_yaw;
     _thrust_sp=_params.speed_sp;
 
-}*/
+} */
 
 
 //define Pressure Depth Control
@@ -724,9 +616,6 @@ void WaterDepthControl::control_attitude()
                 counter = 0;
             }
     
-            /* calculate pressure setpoint */
-            //_pressure_set = _roh_g * _params.water_depth_sp + _p_zero; //mbar
-    
             /* set actual pressure from the sensor and absolute time to a new controler value */
             _pressure_new = press.pressure_mbar;
             _pressure_time_new = hrt_absolute_time();
@@ -741,7 +630,6 @@ void WaterDepthControl::control_attitude()
    
 
             /* calculate d-component of the controler by using a Sliding Mode Observer for accounting possible future trends of the error */
-            //_pressure_dt = get_xhat2(water_depth,iterationtime);
             water_depth_smo = get_xhat1(water_depth,iterationtime);
 
             /* set actual pressure from the sensor and absolute time to a "old" controler value */
@@ -783,58 +671,65 @@ void WaterDepthControl::control_attitude()
                 _R_sp(1, 2) = _params.r_sp_yz;       /**< _att_p_gain_yz */
                 _R_sp(2, 2) = _params.r_sp_zz;       /**< _att_p_gain_zz */
     
-                /* Matrix P-Gains */
-                _att_p_gain(0, 0) = _params.att_p_gain_xx;       /**< _att_p_gain_xx */
-                _att_p_gain(1, 0) = _params.att_p_gain_yx;       /**< _att_p_gain_yx */
-                _att_p_gain(2, 0) = _params.att_p_gain_zx;       /**< _att_p_gain_zx */
-                _att_p_gain(0, 1) = _params.att_p_gain_xy;       /**< _att_p_gain_xy */
-                _att_p_gain(1, 1) = _params.att_p_gain_yy;       /**< _att_p_gain_yy */
-                _att_p_gain(2, 1) = _params.att_p_gain_zy;       /**< _att_p_gain_zy */
-                _att_p_gain(0, 2) = _params.att_p_gain_xz;       /**< _att_p_gain_xz */
-                _att_p_gain(1, 2) = _params.att_p_gain_yz;       /**< _att_p_gain_yz */
-                _att_p_gain(2, 2) = _params.att_p_gain_zz;       /**< _att_p_gain_zz */
 
             /* get current rotation matrix from control state quaternions */
             math::Quaternion q_att(_ctrl_state.q[0], _ctrl_state.q[1], _ctrl_state.q[2], _ctrl_state.q[3]);
             math::Matrix<3, 3> R = q_att.to_dcm();
     
             /* get current rates from sensors */
-            math::Vector <3> omega;
-            omega(0) = _v_att.yawspeed;
-            omega(1) = _v_att.pitchspeed;
-            omega(2) = _v_att.rollspeed;
+            //omega(0) = _v_att.yawspeed;
+            //omega(1) = _v_att.pitchspeed;
+            //omega(2) = _v_att.rollspeed;
     
-            /* Compute attitude error */
-            math::Matrix<3, 3> e_R =  (_R_sp.transposed() * R - R.transposed() * _R_sp) * 0.5;
-
+        omega(0) = _v_att.rollspeed;
+        omega(1) = _v_att.pitchspeed;
+        omega(2) = _v_att.yawspeed;
+    
+            /* Compute matrix: attitude error */
+            e_R =  (_R_sp.transposed() * R - R.transposed() * _R_sp) * 0.5;
 
             /* vee-map the error to get a vector instead of matrix e_R */
             //math::Vector<3> e_R_vec(e_R(2,1), e_R(0,2), e_R(1,0));
-            math::Vector<3> e_R_vec(e_R(1,0), e_R(0,2), e_R(2,1));
+            //math::Vector<3> e_R_vec(e_R(1,0), e_R(0,2), e_R(2,1));
+            //e_R_vec(0) = e_R(1,0);
+            //e_R_vec(1) = e_R(0,2);
+            //e_R_vec(2) = e_R(2,1);
+    
+    e_R_vec(0) = e_R(2,1);
+    e_R_vec(1) = e_R(0,2);
+    e_R_vec(2) = e_R(1,0);
 
-            //p-control
-            //torques(0) = roll
-            //torques(1) = pitch
-            //torques(2) = yaw
-//            torques = - _att_p_gain * e_R_vec;
-
-            torques(0) = e_R(1,0) * _att_p_gain(0, 0);  //yaw
-            torques(1) = e_R(0,2) * _att_p_gain(1, 1);  //pitch
-            torques(2) = e_R(2,1) * _att_p_gain(2, 2);  //roll
+            /**< P-Control */
+            //torques(0) = e_R_vec(0) * _params.yaw_gain;     /**< Yaw    */
+            //torques(1) = e_R_vec(1) * _params.pitch_gain;   /**< Pitch  */
+            //torques(2) = e_R_vec(2) * _params.roll_gain;    /**< Roll   */
     
-    //pd-control
-            torques(0) = torques(0) - omega(0) * _params.yaw_rate_p;       //yaw
-            torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;      //pitch
-            torques(2) = torques(2) - omega(2) * _params.roll_rate_p;        //roll
+    torques(0) = e_R_vec(0) * _params.roll_gain;     /**< Roll    */
+    torques(1) = e_R_vec(1) * _params.pitch_gain;   /**< Pitch  */
+    torques(2) = e_R_vec(2) * _params.yaw_gain;    /**< Yaw   */
     
-
+            /**< PD-Control */
+            //torques(0) = torques(0) - omega(0) * _params.yaw_rate_p;    /**< Yaw    */
+            //torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;  /**< Pitch  */
+            //torques(2) = torques(2) - omega(2) * _params.roll_rate_p;   /**< Roll   */
     
-              //_att_control(0) = torques(2);    //roll
-              _att_control(1) = torques(1);    //pitch
-              _att_control(2) = torques(0);    //yaw
-              _thrust_sp = control_depth;
+    torques(0) = torques(0) - omega(0) * _params.roll_rate_p;    /**< Roll    */
+    torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;  /**< Pitch  */
+    torques(2) = torques(2) - omega(2) * _params.yaw_rate_p;   /**< Yaw   */
     
-  
+    /* geometric control end */
+    
+    /* Values for engine */
+    
+            //_att_control(0) = torques(2);     /**< Roll   */
+            //_att_control(1) = torques(1);       /**< Pitch  */
+            //_att_control(2) = torques(0);       /**< Yaw    */
+            //_thrust_sp = control_depth;         /**< Thrust */
+    
+    //_att_control(0) = torques(0);     /**< Roll   */
+    _att_control(1) = torques(1);       /**< Pitch  */
+    _att_control(2) = torques(2);       /**< Yaw    */
+    _thrust_sp = control_depth;         /**< Thrust */
 
 }
 
@@ -923,8 +818,6 @@ void WaterDepthControl::task_main()
             _pos.vy = torques(1);   // Pitch
             _pos.vz = torques(2);   // Roll
             
-
-            
             /* publish actuator controls */
             _actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
             _actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f;
@@ -932,8 +825,6 @@ void WaterDepthControl::task_main()
             _actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
             _actuators.timestamp = hrt_absolute_time();
             _actuators.timestamp_sample = _v_att.timestamp;
-            
-
             
             orb_publish(ORB_ID(actuator_controls_0), _actuators_0_pub, &_actuators);
             orb_publish(ORB_ID(vehicle_local_position), _position_pub, &_pos);
