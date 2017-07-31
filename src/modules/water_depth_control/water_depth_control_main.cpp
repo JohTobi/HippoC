@@ -677,59 +677,36 @@ void WaterDepthControl::control_attitude()
             math::Matrix<3, 3> R = q_att.to_dcm();
     
             /* get current rates from sensors */
-            //omega(0) = _v_att.yawspeed;
-            //omega(1) = _v_att.pitchspeed;
-            //omega(2) = _v_att.rollspeed;
-    
-        omega(0) = _v_att.rollspeed;
-        omega(1) = _v_att.pitchspeed;
-        omega(2) = _v_att.yawspeed;
+            omega(0) = _v_att.rollspeed;
+            omega(1) = _v_att.pitchspeed;
+            omega(2) = _v_att.yawspeed;
     
             /* Compute matrix: attitude error */
             e_R =  (_R_sp.transposed() * R - R.transposed() * _R_sp) * 0.5;
 
             /* vee-map the error to get a vector instead of matrix e_R */
-            //math::Vector<3> e_R_vec(e_R(2,1), e_R(0,2), e_R(1,0));
-            //math::Vector<3> e_R_vec(e_R(1,0), e_R(0,2), e_R(2,1));
-            //e_R_vec(0) = e_R(1,0);
-            //e_R_vec(1) = e_R(0,2);
-            //e_R_vec(2) = e_R(2,1);
-    
-    e_R_vec(0) = e_R(2,1);
-    e_R_vec(1) = e_R(0,2);
-    e_R_vec(2) = e_R(1,0);
+            e_R_vec(0) = e_R(2,1);  // Roll
+            e_R_vec(1) = e_R(0,2);  // Pitch
+            e_R_vec(2) = e_R(1,0);  // Yaw
 
             /**< P-Control */
-            //torques(0) = e_R_vec(0) * _params.yaw_gain;     /**< Yaw    */
-            //torques(1) = e_R_vec(1) * _params.pitch_gain;   /**< Pitch  */
-            //torques(2) = e_R_vec(2) * _params.roll_gain;    /**< Roll   */
-    
-    torques(0) = e_R_vec(0) * _params.roll_gain;     /**< Roll    */
-    torques(1) = e_R_vec(1) * _params.pitch_gain;   /**< Pitch  */
-    torques(2) = e_R_vec(2) * _params.yaw_gain;    /**< Yaw   */
+            torques(0) = e_R_vec(0) * _params.roll_gain;     /**< Roll    */
+            torques(1) = e_R_vec(1) * _params.pitch_gain;   /**< Pitch  */
+            torques(2) = e_R_vec(2) * _params.yaw_gain;    /**< Yaw   */
     
             /**< PD-Control */
-            //torques(0) = torques(0) - omega(0) * _params.yaw_rate_p;    /**< Yaw    */
-            //torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;  /**< Pitch  */
-            //torques(2) = torques(2) - omega(2) * _params.roll_rate_p;   /**< Roll   */
-    
-    torques(0) = torques(0) - omega(0) * _params.roll_rate_p;    /**< Roll    */
-    torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;  /**< Pitch  */
-    torques(2) = torques(2) - omega(2) * _params.yaw_rate_p;   /**< Yaw   */
+            torques(0) = torques(0) - omega(0) * _params.roll_rate_p;    /**< Roll    */
+            torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;  /**< Pitch  */
+            torques(2) = torques(2) - omega(2) * _params.yaw_rate_p;   /**< Yaw   */
     
     /* geometric control end */
     
     /* Values for engine */
     
-            //_att_control(0) = torques(2);     /**< Roll   */
-            //_att_control(1) = torques(1);       /**< Pitch  */
-            //_att_control(2) = torques(0);       /**< Yaw    */
-            //_thrust_sp = control_depth;         /**< Thrust */
-    
-    //_att_control(0) = torques(0);     /**< Roll   */
-    _att_control(1) = torques(1);       /**< Pitch  */
-    _att_control(2) = torques(2);       /**< Yaw    */
-    _thrust_sp = control_depth;         /**< Thrust */
+            //_att_control(0) = torques(0);     /**< Roll   */
+            _att_control(1) = torques(1);       /**< Pitch  */
+            _att_control(2) = torques(2);       /**< Yaw    */
+            _thrust_sp = control_depth;         /**< Thrust */
 
 }
 
@@ -813,10 +790,11 @@ void WaterDepthControl::task_main()
             /* Show Parameters of Geometric Control by using a Mavlink Topic and QGC */
             _pos.x = water_depth;
             _pos.y = _params.water_depth_sp;
-            _pos.z = control_depth;
-            _pos.vx = torques(0);   // Yaw
+            _pos.z = e_R_vec(1);    // Pitch
+            _pos.vx = e_R_vec(2);   // Yaw
             _pos.vy = torques(1);   // Pitch
-            _pos.vz = torques(2);   // Roll
+            _pos.vz = torques(2);   // Yaw
+            
             
             /* publish actuator controls */
             _actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
