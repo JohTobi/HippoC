@@ -735,6 +735,10 @@ void WaterDepthControl::furuta_pendulum()
 
     angle_error = alpha_zero - angle_input;
 
+    if ((angle_error > 0.5) && (angle_error < -0.5)){
+        angle_error = 0;
+    }
+
     angle_p_control = angle_error * _params.roll_gain;
 
     _att_control(0) = angle_p_control;     /**< Roll   */
