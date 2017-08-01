@@ -131,6 +131,7 @@ private:
     float xhat2_prev;       /**< Estimated velocity at previous time step in m/s */
     float iterationtime;    /**< Time pro Iteration */
     float water_depth_smo;  /**< Outcome water depth SMO in m */
+    float adc_input;
 
     int _adc_sub_fd;         /**< raw sensor data subscription */
 
@@ -246,6 +247,8 @@ private:
      void control_attitude();
     
     void control_helix();
+
+    void furuta_pendulum();
     
     float get_xhat2(float x1, float iterationtime);
     
@@ -710,6 +713,18 @@ void WaterDepthControl::control_attitude()
 
 }
 
+//define Furuta Pendulum
+void WaterDepthControl::furuta_pendulum()
+{
+    //get ADC value and print it for debugging
+    raw_adc_data_poll();
+
+    adc_input = _raw_adc.channel_value[7];
+
+
+}
+
+
 
 //main task
 void WaterDepthControl::task_main()
@@ -768,15 +783,20 @@ void WaterDepthControl::task_main()
             /* check for updates in other topics */
             parameter_update_poll();
 
-            //start controller
-            control_attitude();
-            //control_helix();
 
-            //get ADC value and print it for debugging
-            raw_adc_data_poll();
+            /* start controller */
 
- //           PX4_INFO("ADC:\t%8.4f",
- //                                     (double)_raw_adc.channel_value[7]);
+                /**< Drive a helix */
+                //control_helix();
+
+                /**< Water depth and geometric control for furuta pendulum */
+                control_attitude();
+
+                /**< Controller for furuta pendulum */
+                furuta_pendulum();
+
+
+
             
             
             /* Show Parameters of SMO by using a Mavlink Topic and QGC */
