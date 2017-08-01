@@ -131,7 +131,13 @@ private:
     float xhat2_prev;       /**< Estimated velocity at previous time step in m/s */
     float iterationtime;    /**< Time pro Iteration */
     float water_depth_smo;  /**< Outcome water depth SMO in m */
+
+    /**< ADC */
     float adc_input;
+    float angle_input;
+    float alpha_zero;
+    float angle_error;
+    float angle_p_control;
 
     int _adc_sub_fd;         /**< raw sensor data subscription */
 
@@ -338,9 +344,9 @@ WaterDepthControl::WaterDepthControl() :
     xhat1_prev = 0;
     //xhat1_prev[1] = 0; //Estimated depth at previous time step in m
     xhat2_prev = 0; //Estimated velocity at previous time step in m/s
+
+    alpha_zero = 0;
    
-   
- 
 
     _params_handles.roll_rate_p		= 	param_find("UW_ROLL_RATE_P");
 
@@ -680,7 +686,7 @@ void WaterDepthControl::control_attitude()
             math::Matrix<3, 3> R = q_att.to_dcm();
     
             /* get current rates from sensors */
-            omega(0) = _v_att.rollspeed;
+            //omega(0) = _v_att.rollspeed;
             omega(1) = _v_att.pitchspeed;
             omega(2) = _v_att.yawspeed;
     
@@ -688,17 +694,17 @@ void WaterDepthControl::control_attitude()
             e_R =  (_R_sp.transposed() * R - R.transposed() * _R_sp) * 0.5;
 
             /* vee-map the error to get a vector instead of matrix e_R */
-            e_R_vec(0) = e_R(2,1);  // Roll
+            //e_R_vec(0) = e_R(2,1);  // Roll
             e_R_vec(1) = e_R(0,2);  // Pitch
             e_R_vec(2) = e_R(1,0);  // Yaw
 
             /**< P-Control */
-            torques(0) = e_R_vec(0) * _params.roll_gain;     /**< Roll    */
+            //torques(0) = e_R_vec(0) * _params.roll_gain;     /**< Roll    */
             torques(1) = e_R_vec(1) * _params.pitch_gain;   /**< Pitch  */
             torques(2) = e_R_vec(2) * _params.yaw_gain;    /**< Yaw   */
     
             /**< PD-Control */
-            torques(0) = torques(0) - omega(0) * _params.roll_rate_p;    /**< Roll    */
+            //torques(0) = torques(0) - omega(0) * _params.roll_rate_p;    /**< Roll    */
             torques(1) = torques(1) - omega(1) * _params.pitch_rate_p;  /**< Pitch  */
             torques(2) = torques(2) - omega(2) * _params.yaw_rate_p;   /**< Yaw   */
     
@@ -720,6 +726,18 @@ void WaterDepthControl::furuta_pendulum()
     raw_adc_data_poll();
 
     adc_input = _raw_adc.channel_value[7];
+
+    if (adc_input > 3.2f){
+        adc_input = 3.2;
+    }
+
+    angle_input = (0.625f * adc_input) - 1.0f;
+
+    angle_error = alpha_zero - angle_input;
+
+    angle_p_control = angle_error * _params.roll_gain;
+
+    _att_control(0) = angle_p_control;     /**< Roll   */
 
 
 }
@@ -808,12 +826,21 @@ void WaterDepthControl::task_main()
             //_pos.vz = control_depth;          // Signal for Engine
             
             /* Show Parameters of Geometric Control by using a Mavlink Topic and QGC */
-            _pos.x = water_depth;
-            _pos.y = _params.water_depth_sp;
-            _pos.z = e_R_vec(1);    // Pitch
-            _pos.vx = e_R_vec(2);   // Yaw
-            _pos.vy = torques(1);   // Pitch
-            _pos.vz = torques(2);   // Yaw
+            //_pos.x = water_depth;
+            //_pos.y = _params.water_depth_sp;
+            //_pos.z = e_R_vec(1);    // Pitch
+            //_pos.vx = e_R_vec(2);   // Yaw
+            //_pos.vy = torques(1);   // Pitch
+            //_pos.vz = torques(2);   // Yaw
+
+            /* Show Parameters of Furuta Pendulum by using a Mavlink Topic and QGC */
+            _pos.x = adc_input;
+            _pos.y = angle_input;
+            _pos.z = angle_error;
+            _pos.vx = angle_p_control;
+            //_pos.vy =
+            //_pos.vz =
+
             
             
             /* publish actuator controls */
