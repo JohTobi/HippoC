@@ -713,10 +713,9 @@ void WaterDepthControl::control_attitude()
     /* Values for engine */
     
             //_att_control(0) = torques(0);     /**< Roll   */
-            _att_control(1) = torques(1);       /**< Pitch  */
-            _att_control(2) = torques(2);       /**< Yaw    */
-            _thrust_sp = control_depth;         /**< Thrust */
-
+            //_att_control(1) = torques(1);       /**< Pitch  */
+            //_att_control(2) = torques(2);       /**< Yaw    */
+            //_thrust_sp = control_depth;         /**< Thrust */
 }
 
 //define Furuta Pendulum
@@ -728,20 +727,25 @@ void WaterDepthControl::furuta_pendulum()
     adc_input = _raw_adc.channel_value[7];
 
     if (adc_input > 3.2f){
-        adc_input = 3.2;
+        adc_input = 3.2f;
     }
 
     angle_input = (0.625f * adc_input) - 1.0f;
 
     angle_error = alpha_zero - angle_input;
 
-    if ((angle_error > 0.5) && (angle_error < -0.5)){
-        angle_error = 0;
+    if ((angle_error > 0.5f) || (angle_error < -0.5f)){
+        angle_error = 0.0f;
     }
 
     angle_p_control = angle_error * _params.roll_gain;
 
     _att_control(0) = angle_p_control;     /**< Roll   */
+    
+    //_pos.x = adc_input;
+    //_pos.y = angle_input;
+    //_pos.z = angle_error;
+    //_pos.vx = angle_p_control;
 
 
 }
