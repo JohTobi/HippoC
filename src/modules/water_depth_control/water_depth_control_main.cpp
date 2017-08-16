@@ -713,14 +713,15 @@ void WaterDepthControl::control_attitude()
     /* Values for engine */
     
             //_att_control(0) = torques(0);     /**< Roll   */
-            //_att_control(1) = torques(1);       /**< Pitch  */
-            //_att_control(2) = torques(2);       /**< Yaw    */
-            //_thrust_sp = control_depth;         /**< Thrust */
+            _att_control(1) = torques(1);       /**< Pitch  */
+            _att_control(2) = torques(2);       /**< Yaw    */
+            _thrust_sp = control_depth;         /**< Thrust */
 }
 
 //define Furuta Pendulum
 void WaterDepthControl::furuta_pendulum()
 {
+    
     //get ADC value and print it for debugging
     raw_adc_data_poll();
 
@@ -739,14 +740,16 @@ void WaterDepthControl::furuta_pendulum()
     }
 
     angle_p_control = angle_error * _params.roll_gain;
+    
+    if (angle_p_control > 1.0f){
+        angle_p_control = 1.0f;
+    }
+    
+    if (angle_p_control < -1.0f){
+        angle_p_control = -1.0f;
+    }
 
     _att_control(0) = angle_p_control;     /**< Roll   */
-    
-    //_pos.x = adc_input;
-    //_pos.y = angle_input;
-    //_pos.z = angle_error;
-    //_pos.vx = angle_p_control;
-
 
 }
 
@@ -820,11 +823,10 @@ void WaterDepthControl::task_main()
 
                 /**< Controller for furuta pendulum */
                 furuta_pendulum();
-
-
-
             
+            /* end controller */
             
+ 
             /* Show Parameters of SMO by using a Mavlink Topic and QGC */
             //_pos.x = water_depth;             // Water Depth
             //_pos.y = _params.water_depth_sp   // Water Depth Setpoint
@@ -849,8 +851,6 @@ void WaterDepthControl::task_main()
             //_pos.vy =
             //_pos.vz =
 
-            
-            
             /* publish actuator controls */
             _actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
             _actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f;
