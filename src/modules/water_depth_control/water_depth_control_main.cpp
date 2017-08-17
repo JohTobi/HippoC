@@ -181,9 +181,6 @@ private:
          param_t tau; // Observer parameter
          param_t phi; // Observer parameter
          
-         param_t yaw_speed_sp;
-         param_t pitch_angle_sp;
-         param_t speed_sp;
     
          param_t water_depth_pgain;
          param_t water_depth_dgain;
@@ -218,9 +215,6 @@ private:
          float tau;
          float phi;
          
-         float yaw_speed_sp;
-         float pitch_angle_sp;
-         float speed_sp;
 
          float water_depth_pgain;
          float water_depth_dgain;
@@ -359,10 +353,6 @@ WaterDepthControl::WaterDepthControl() :
     _params_handles.tau             =   param_find("TAU");
     _params_handles.phi             =   param_find("PHI");
     
-    _params_handles.yaw_speed_sp    =   param_find("UWC_YAW_RATE_SP");
-    _params_handles.pitch_angle_sp  =   param_find("UWC_PITCH_SP");
-    _params_handles.speed_sp        =   param_find("UWC_SPEED_SP");
-
 
     _params_handles.water_depth_sp = param_find("WATER_DEPTH");
     _params_handles.water_depth_pgain = param_find("W_D_PGAIN");
@@ -428,9 +418,6 @@ int WaterDepthControl::parameters_update()
     param_get(_params_handles.tau, &(_params.tau));
     param_get(_params_handles.phi, &(_params.phi));
     
-    param_get(_params_handles.yaw_speed_sp, &(_params.yaw_speed_sp));
-     param_get(_params_handles.pitch_angle_sp, &(_params.pitch_angle_sp));
-     param_get(_params_handles.speed_sp, &(_params.speed_sp));
 
     param_get(_params_handles.water_depth_sp, &(_params.water_depth_sp));
     param_get(_params_handles.water_depth_pgain, &(_params.water_depth_pgain));
@@ -560,51 +547,6 @@ float WaterDepthControl::sat(float x, float gamma) {
 }
 
 
-/*void WaterDepthControl::control_helix()
-{
-    
-    struct pressure_s press;
-    
-    orb_copy(ORB_ID(pressure), _pressure_raw, &press);
-    
-    
-    if (counter == 1){
-        _p_zero = press.pressure_mbar;
-        counter = 0;
-    }
-    
-    
-    float pitch_fac = 1.0;
-    if (my_depth > _params.water_depth_sp)
-    {
-        pitch_fac = -1.0;
-    }
-    
-    
-    float pitch_angle = _params.pitch_angle_sp * pitch_fac ;
-    float sr = sinf(_v_att.roll);
-    float cr = cosf(_v_att.roll);
-    
-    
-    float yaw_p = _params.rho;
-    float pitch_p = _params.tau;
-    float roll_p = _params.phi;
-    float roll_rate_p = _params.r_sp_xx;
-    
-    //p-control
-    float control_pitch = (( pitch_angle-_v_att.pitch) * pitch_p)*cr+(_params.yaw_speed_sp * yaw_p)*sr;
-    float control_yaw = (_params.yaw_speed_sp * yaw_p)*cr - (((pitch_angle-_v_att.pitch) ) * pitch_p)*sr;
-    
-    //d-control
-    //control_pitch=control_pitch - _v_att.pitchspeed * _params.pitch_rate_p*cr;
-    //control_yaw=control_yaw - _v_att.yawspeed * _params.yaw_rate_p*sr;
- 
-    _att_control(0) = - _v_att.roll * roll_p - _v_att.rollspeed * roll_rate_p;
-    _att_control(1) = control_pitch;
-    _att_control(2) = control_yaw;
-    _thrust_sp=_params.speed_sp;
-
-} */
 
 
 //define Pressure Depth Control
@@ -814,9 +756,6 @@ void WaterDepthControl::task_main()
 
 
             /* start controller */
-
-                /**< Drive a helix */
-                //control_helix();
 
                 /**< Water depth and geometric control for furuta pendulum */
                 control_attitude();
