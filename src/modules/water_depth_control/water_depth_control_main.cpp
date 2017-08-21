@@ -123,6 +123,8 @@ private:
     float _pressure_new;
     float _pressure_time_old;
     float _pressure_time_new;
+    float _furuta_pendulum_time_new;
+    float _furuta_pendulum_time_old;
     
     /**< SLIDING-MODE-OBSERVER (SMO) */
     float xhat1;            /**< Estimated depth in m */
@@ -131,6 +133,11 @@ private:
     float xhat2_prev;       /**< Estimated velocity at previous time step in m/s */
     float iterationtime;    /**< Time pro Iteration */
     float water_depth_smo;  /**< Outcome water depth SMO in m */
+    
+    float furuta_pendulum_smo;
+    float xhat1_fp;
+    float xhat1_prev_fp;
+    float iterationtime_fp;
 
     /**< ADC */
     float adc_input;
@@ -167,8 +174,10 @@ private:
     
 
      struct {
-
-
+         param_t furuta_pendulum;
+         param_t water_depth_controller;
+         param_t geometric_controller;
+         
          param_t roll_rate_p;
          param_t pitch_rate_p;
          param_t yaw_rate_p;
@@ -180,6 +189,11 @@ private:
          param_t rho; // Observer parameter
          param_t tau; // Observer parameter
          param_t phi; // Observer parameter
+         
+         // SMO: Model parameters
+         param_t rho_fp; // Observer parameter
+         param_t tau_fp; // Observer parameter
+         param_t phi_fp; // Observer parameter
          
     
          param_t water_depth_pgain;
@@ -198,11 +212,16 @@ private:
          param_t pitch_gain;
          param_t yaw_gain;
          param_t roll_gain;
+         
+         param_t fp_d_gain;
 
      }		_params_handles;		/**< handles for interesting parameters */
 
      struct {
-
+         float furuta_pendulum;
+         float water_depth_controller;
+         float geometric_controller;
+        
          float roll_rate_p;
          float pitch_rate_p;
          float yaw_rate_p;
@@ -214,6 +233,13 @@ private:
          float rho;
          float tau;
          float phi;
+         
+         //SLIDING-MODE-OBSERVER (SMO)
+         ///Model parameters
+         float rho_fp;
+         float tau_fp;
+         float phi_fp;
+
          
 
          float water_depth_pgain;
@@ -232,6 +258,8 @@ private:
          float pitch_gain;
          float yaw_gain;
          float roll_gain;
+         
+         float fp_d_gain;
 
      }		_params;
 
@@ -245,14 +273,14 @@ private:
      static void task_main_trampoline(int argc, char *argv[]);
 
      void control_attitude();
-    
-    void control_helix();
 
     void furuta_pendulum();
     
     float get_xhat2(float x1, float iterationtime);
     
     float get_xhat1(float x1, float iterationtime);
+    
+    float get_xhat1_fp(float x1, float iterationtime);
     
     // sat functio
     float sat(float x, float gamma);
@@ -327,6 +355,10 @@ WaterDepthControl::WaterDepthControl() :
     _pressure_time_old = 0;
     _pressure_time_new = 0;
     
+    _furuta_pendulum_time_old = 0;
+    _furuta_pendulum_time_new = 0;
+    
+    
     
     iterationtime = 0;
    // rho = 10; //Observer parameter 1.5
@@ -338,10 +370,17 @@ WaterDepthControl::WaterDepthControl() :
     xhat1_prev = 0;
     //xhat1_prev[1] = 0; //Estimated depth at previous time step in m
     xhat2_prev = 0; //Estimated velocity at previous time step in m/s
+    
+    xhat1_fp = 0.0;
+    xhat1_prev_fp = 0.0;
 
     alpha_zero = 0;
    
 
+    _params_handles.furuta_pendulum =   param_find("CONTROLLER_FUR");
+    _params_handles.water_depth_controller =   param_find("CONTROLLER_DEPTH");
+    _params_handles.geometric_controller =   param_find("CONTROLLER_GEO");
+    
     _params_handles.roll_rate_p		= 	param_find("UW_ROLL_RATE_P");
 
     _params_handles.pitch_rate_p	= 	param_find("UW_PITCH_RATE_P");
@@ -352,6 +391,10 @@ WaterDepthControl::WaterDepthControl() :
     _params_handles.rho             =   param_find("RHO");
     _params_handles.tau             =   param_find("TAU");
     _params_handles.phi             =   param_find("PHI");
+    
+    _params_handles.rho_fp             =   param_find("RHO_FP");
+    _params_handles.tau_fp             =   param_find("TAU_FP");
+    _params_handles.phi_fp             =   param_find("PHI_FP");
     
 
     _params_handles.water_depth_sp = param_find("WATER_DEPTH");
@@ -373,6 +416,8 @@ WaterDepthControl::WaterDepthControl() :
     _params_handles.pitch_gain = param_find("GC_GAIN_PITCH");
     _params_handles.yaw_gain = param_find("GC_GAIN_YAW");
     _params_handles.roll_gain = param_find("GC_GAIN_ROLL");
+    
+    _params_handles.fp_d_gain = param_find("FP_D_GAIN");
 
 
     /* fetch initial parameter values */
@@ -409,6 +454,10 @@ WaterDepthControl::~WaterDepthControl()
 
 int WaterDepthControl::parameters_update()
 {
+    param_get(_params_handles.furuta_pendulum, &(_params.furuta_pendulum));
+    param_get(_params_handles.water_depth_controller, &(_params.water_depth_controller));
+    param_get(_params_handles.geometric_controller, &(_params.geometric_controller));
+    
     param_get(_params_handles.roll_rate_p, &(_params.roll_rate_p));
     param_get(_params_handles.pitch_rate_p, &(_params.pitch_rate_p));
     param_get(_params_handles.yaw_rate_p, &(_params.yaw_rate_p));
@@ -417,6 +466,10 @@ int WaterDepthControl::parameters_update()
     param_get(_params_handles.rho, &(_params.rho));
     param_get(_params_handles.tau, &(_params.tau));
     param_get(_params_handles.phi, &(_params.phi));
+    
+    param_get(_params_handles.rho_fp, &(_params.rho_fp));
+    param_get(_params_handles.tau_fp, &(_params.tau_fp));
+    param_get(_params_handles.phi_fp, &(_params.phi_fp));
     
 
     param_get(_params_handles.water_depth_sp, &(_params.water_depth_sp));
@@ -438,6 +491,8 @@ int WaterDepthControl::parameters_update()
     param_get(_params_handles.pitch_gain, &(_params.pitch_gain));
     param_get(_params_handles.yaw_gain, &(_params.yaw_gain));
     param_get(_params_handles.roll_gain, &(_params.roll_gain));
+    
+    param_get(_params_handles.fp_d_gain, &(_params.fp_d_gain));
 
     return OK;
 }
@@ -538,6 +593,15 @@ float WaterDepthControl::get_xhat1(float x1, float time) {
         xhat1 = xhat1_prev - (time / 1) * _params.rho * sat(xhat1_prev - x1, _params.phi);
     xhat1_prev = xhat1; //xhat1 = geschätzte Tiefe
     return xhat1;
+}
+
+
+
+float WaterDepthControl::get_xhat1_fp(float x1, float time) {
+    //xhat1 = xhat1_prev - (iterationtime / 0.1) * rho * sat(xhat1_prev - x1, 1);
+    xhat1_fp = xhat1_prev_fp - (time / 1) * _params.rho_fp * sat(xhat1_prev_fp - x1, _params.phi_fp);
+    xhat1_prev_fp = xhat1_fp; //xhat1 = geschätzte Tiefe
+    return xhat1_fp;
 }
 
 // sat functio
@@ -654,10 +718,26 @@ void WaterDepthControl::control_attitude()
     
     /* Values for engine */
     
+    int status_wdc = _params.water_depth_controller;
+    int status_gc = _params.geometric_controller;
+    
+    if (status_wdc == 1){
+        _thrust_sp = control_depth;     /**< Thrust */
+    }else{
+        _thrust_sp = 0.0;
+    }
+    if (status_gc == 1){
+        _att_control(1) = torques(1);   /**< Pitch  */
+        _att_control(2) = torques(2);   /**< Yaw    */
+    }else{
+        _att_control(1) = 0.0;
+        _att_control(2) = 0.0;
+    }
+    
             //_att_control(0) = torques(0);     /**< Roll   */
-            _att_control(1) = torques(1);       /**< Pitch  */
-            _att_control(2) = torques(2);       /**< Yaw    */
-            _thrust_sp = control_depth;         /**< Thrust */
+           // _att_control(1) = torques(1);       /**< Pitch  */
+           // _att_control(2) = torques(2);       /**< Yaw    */
+           // _thrust_sp = control_depth;         /**< Thrust */
 }
 
 //define Furuta Pendulum
@@ -666,34 +746,70 @@ void WaterDepthControl::furuta_pendulum()
     
     //get ADC value and print it for debugging
     raw_adc_data_poll();
-
+    
     adc_input = _raw_adc.channel_value[7];
+
+    
+    _furuta_pendulum_time_new = hrt_absolute_time();
+    
+    /* calculate iterationtime for Sliding Mode Observer */
+    float iterationtime2 = _furuta_pendulum_time_new - _furuta_pendulum_time_old;
+    /* scale interationtime*/
+    iterationtime2 = iterationtime2 * 0.0000015f;
 
     if (adc_input > 3.2f){
         adc_input = 3.2f;
     }
 
     angle_input = (0.625f * adc_input) - 1.0f;
-
+    
+    /* SMO */
+    furuta_pendulum_smo = get_xhat1_fp(angle_input,iterationtime2);
+    
     angle_error = alpha_zero - angle_input;
-
-    if ((angle_error > 0.5f) || (angle_error < -0.5f)){
-        angle_error = 0.0f;
-    }
-
+    
     angle_p_control = angle_error * _params.roll_gain;
     
-    if (angle_p_control > 1.0f){
-        angle_p_control = 1.0f;
+    float angle_pd_control = angle_p_control - furuta_pendulum_smo * _params.fp_d_gain;
+    
+    if (angle_pd_control > 1.0f){
+        angle_pd_control = 1.0f;
     }
     
-    if (angle_p_control < -1.0f){
-        angle_p_control = -1.0f;
+    if (angle_pd_control < -1.0f){
+        angle_pd_control = -1.0f;
     }
+    
+    if ((angle_error > 0.5f) || (angle_error < -0.5f))
+    {
+        angle_pd_control = 0.0;
+    }
+    
+    int status = _params.furuta_pendulum;
+    if (status == 1){
+        _att_control(0) = angle_pd_control;     /**< Roll   */
+    }else{
+        _att_control(0) = 0.0;
+    }
+    
+    _furuta_pendulum_time_old = _furuta_pendulum_time_new;
 
-    _att_control(0) = angle_p_control;     /**< Roll   */
-
+/*
+    if ((angle_input == 1.0f) || (angle_input == -1.0f)){
+        
+        do {
+            //nichtlinearer Regler
+        } while ((angle_input > 0.4f) || (angle_error < -0.4f));
+    }
+    
+    //linearer Regler
+*/    
+    
+    
+    
+    
 }
+
 
 
 
@@ -764,31 +880,40 @@ void WaterDepthControl::task_main()
                 furuta_pendulum();
             
             /* end controller */
+        
+            int status_wdc = _params.water_depth_controller;
+            int status_gc = _params.geometric_controller;
+            int status_fp = _params.furuta_pendulum;
             
- 
-            /* Show Parameters of SMO by using a Mavlink Topic and QGC */
-            //_pos.x = water_depth;             // Water Depth
-            //_pos.y = _params.water_depth_sp   // Water Depth Setpoint
-            //_pos.z = water_depth_smo;         // Water Depth Sliding Mode Observer
-            //_pos.vx = water_depth_err;        // Water Depth Error (P-Controller)
-            //_pos.vy = water_depth_pd_err;     // Water Depth Error (PD-Controller)
-            //_pos.vz = control_depth;          // Signal for Engine
+            if ((status_wdc == 1) && (status_gc == 0)){
+                /* Show Parameters of SMO by using a Mavlink Topic and QGC */
+                _pos.x = water_depth;             // Water Depth
+                _pos.y = _params.water_depth_sp;  // Water Depth Setpoint
+                _pos.z = water_depth_smo;         // Water Depth Sliding Mode Observer
+                _pos.vx = water_depth_err;        // Water Depth Error (P-Controller)
+                _pos.vy = water_depth_pd_err;     // Water Depth Error (PD-Controller)
+                _pos.vz = _thrust_sp;          // Signal for Engine
+            }
             
-            /* Show Parameters of Geometric Control by using a Mavlink Topic and QGC */
-            //_pos.x = water_depth;
-            //_pos.y = _params.water_depth_sp;
-            //_pos.z = e_R_vec(1);    // Pitch
-            //_pos.vx = e_R_vec(2);   // Yaw
-            //_pos.vy = torques(1);   // Pitch
-            //_pos.vz = torques(2);   // Yaw
-
-            /* Show Parameters of Furuta Pendulum by using a Mavlink Topic and QGC */
-            _pos.x = adc_input;
-            _pos.y = angle_input;
-            _pos.z = angle_error;
-            _pos.vx = angle_p_control;
-            //_pos.vy =
-            //_pos.vz =
+            if ((status_wdc == 1) && (status_gc == 1)){
+                /* Show Parameters of Geometric Control by using a Mavlink Topic and QGC */
+                _pos.x = water_depth;
+                _pos.y = _thrust_sp;
+                _pos.z = e_R_vec(1);    // Pitch
+                _pos.vx = e_R_vec(2);   // Yaw
+                _pos.vy = _att_control(1);   // Pitch
+                _pos.vz = _att_control(2);   // Yaw
+            }
+            
+            if (status_fp == 1){
+                /* Show Parameters of Furuta Pendulum by using a Mavlink Topic and QGC */
+                _pos.x = adc_input;
+                _pos.y = angle_input;
+                _pos.z = angle_error;
+                _pos.vx = furuta_pendulum_smo;
+                _pos.vy = angle_p_control;
+                _pos.vz = _att_control(0);
+            }
 
             /* publish actuator controls */
             _actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
