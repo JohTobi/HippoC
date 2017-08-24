@@ -138,6 +138,8 @@ private:
     float xhat1_fp;
     float xhat1_prev_fp;
     float iterationtime_fp;
+    float xhat2_fp;
+    float xhat2_prev_fp;
 
     /**< ADC */
     float adc_input;
@@ -145,6 +147,18 @@ private:
     float alpha_zero;
     float angle_error;
     float angle_p_control;
+
+    float roll_signal;
+    float swing_up_time_new;
+    float swing_up_time_old;
+    float angle_new;
+    float angle_old;
+
+    float time1;
+    float time2;
+    float roll_signal1;
+    float roll_signal2;
+    float a;
 
     int _adc_sub_fd;         /**< raw sensor data subscription */
 
@@ -281,9 +295,15 @@ private:
     float get_xhat1(float x1, float iterationtime);
     
     float get_xhat1_fp(float x1, float iterationtime);
+
+        float get_xhat2_fp(float x1, float iterationtime);
     
     // sat functio
     float sat(float x, float gamma);
+
+    float balancing(float angle, float smo);
+
+    float swing_up(float angle, float smo_pos, float smo_vel);
 
      void vehicle_attitude_setpoint_poll();
 
@@ -357,7 +377,18 @@ WaterDepthControl::WaterDepthControl() :
     
     _furuta_pendulum_time_old = 0;
     _furuta_pendulum_time_new = 0;
-    
+
+    swing_up_time_new = 0;
+    swing_up_time_old = 0;
+    angle_new = 0;
+    angle_old = 0;
+
+    time1 = 0;
+    time2 = 0;
+    roll_signal1 = 0;
+    roll_signal2 = 0;
+
+    a=0;
     
     
     iterationtime = 0;
@@ -373,6 +404,8 @@ WaterDepthControl::WaterDepthControl() :
     
     xhat1_fp = 0.0;
     xhat1_prev_fp = 0.0;
+    xhat2_fp = 0.0;
+    xhat2_prev_fp = 0.0;
 
     alpha_zero = 0;
    
@@ -604,12 +637,81 @@ float WaterDepthControl::get_xhat1_fp(float x1, float time) {
     return xhat1_fp;
 }
 
+float WaterDepthControl::get_xhat2_fp(float x1, float time) {
+
+    xhat1_fp = get_xhat1_fp(x1, time);
+
+
+   // xhat2 = xhat2_prev + (iterationtime / (0.1 * tau))* (-xhat2_prev - rho * sat(xhat1 - x1,1));
+    xhat2_fp = xhat2_prev_fp + (time / _params.tau_fp) * (-xhat2_prev_fp - _params.rho_fp * sat(xhat1_fp - x1,_params.phi_fp));
+
+    xhat2_prev_fp = xhat2_fp;
+        return xhat2_fp; //xhat2 = geschätzte Geschwindigkeit
+}
+
 // sat functio
 float WaterDepthControl::sat(float x, float gamma) {
     float y = math::max(math::min(1.0f, x / gamma), -1.0f);
     return y;
 }
 
+float WaterDepthControl::balancing(float angle, float smo) {
+
+    angle_input = (1 / 180.0f) * angle;
+
+    angle_error = alpha_zero - angle_input;
+
+    angle_p_control = angle_error * _params.roll_gain;
+
+    float angle_pd_control = angle_p_control - smo * _params.fp_d_gain;
+
+    if (angle_pd_control > 1.0f){
+        angle_pd_control = 1.0f;
+    }
+
+    if (angle_pd_control < -1.0f){
+        angle_pd_control = -1.0f;
+    }
+
+    return angle_pd_control;
+}
+
+float WaterDepthControl::swing_up(float angle, float smo_pos, float smo_vel) {
+
+   // swing_up_time_new = hrt_absolute_time();
+
+_pos.x = angle;
+    float angle_dot = smo_vel;//(angle - angle_old)/((swing_up_time_new - swing_up_time_old) * 0.0000015f);
+_pos.y = smo_pos;
+    float d = cos(angle/3.0f);
+
+    float y = angle_dot * d;
+_pos.z = smo_vel;
+    if (y > 0.0f) {
+        y = 1.0f;
+    } else if (y < 0.0f) {
+        y = -1.0f;
+    } else {
+        y = 0.0f;
+    }
+_pos.vx = y;
+    angle = angle * (3.1416f / 180.0f);
+    float betrag = pow(sqrt(angle * angle),3.2);
+
+_pos.vy = betrag;
+    float u = 0.02f * betrag * y;
+
+
+
+
+ //   angle_old = angle;
+   // swing_up_time_old = swing_up_time_new;
+
+
+
+    return u;
+
+}
 
 
 
@@ -658,7 +760,7 @@ void WaterDepthControl::control_attitude()
             water_depth_pd_err = water_depth_err - water_depth_smo * _params.water_depth_dgain;
                  /* multiply with a p-gain */
                  control_depth = _params.water_depth_pgain * water_depth_pd_err;
-    
+/*
     if (control_depth > 1.0f){
         control_depth = 0.9;
     }
@@ -666,7 +768,7 @@ void WaterDepthControl::control_attitude()
     if (control_depth < -1.0f){
         control_depth = -0.9;
     }
-    
+*/
     /* pressure sensor control end */
     
 
@@ -715,31 +817,31 @@ void WaterDepthControl::control_attitude()
             torques(2) = torques(2) - omega(2) * _params.yaw_rate_p;   /**< Yaw   */
     
     /* geometric control end */
-    
+    //penis
     /* Values for engine */
-    
+/*
     int status_wdc = _params.water_depth_controller;
     int status_gc = _params.geometric_controller;
     
     if (status_wdc == 1){
-        _thrust_sp = control_depth;     /**< Thrust */
+        _thrust_sp = control_depth;     // Thrust
     }else{
         _thrust_sp = 0.0;
     }
     if (status_gc == 1){
-        _att_control(1) = torques(1);   /**< Pitch  */
-        _att_control(2) = torques(2);   /**< Yaw    */
+        _att_control(1) = torques(1);   // Pitch
+        _att_control(2) = torques(2);   // Yaw
     }else{
         _att_control(1) = 0.0;
         _att_control(2) = 0.0;
     }
-    
+*/
             //_att_control(0) = torques(0);     /**< Roll   */
            // _att_control(1) = torques(1);       /**< Pitch  */
            // _att_control(2) = torques(2);       /**< Yaw    */
            // _thrust_sp = control_depth;         /**< Thrust */
 }
-
+//penis
 //define Furuta Pendulum
 void WaterDepthControl::furuta_pendulum()
 {
@@ -749,64 +851,58 @@ void WaterDepthControl::furuta_pendulum()
     
     adc_input = _raw_adc.channel_value[7];
 
+
     
     _furuta_pendulum_time_new = hrt_absolute_time();
     
     /* calculate iterationtime for Sliding Mode Observer */
-    float iterationtime2 = _furuta_pendulum_time_new - _furuta_pendulum_time_old;
-    /* scale interationtime*/
-    iterationtime2 = iterationtime2 * 0.0000015f;
+    float iterationtime2 = (_furuta_pendulum_time_new - _furuta_pendulum_time_old) * 0.0000015f;
 
-    if (adc_input > 3.2f){
-        adc_input = 3.2f;
+
+
+  //  if ((adc_input > 0.2f) && (adc_input < 3f)) {
+ //       adc_input = adc_input;
+    //}else{
+   //     adc_input = 3.2f;
+    //}
+
+
+
+   // if (adc_input > 3.2f){
+   //     adc_input = 3.2f;
+   // }
+
+
+    //angle_input = (0.625f * adc_input) - 1.0f;
+    angle_input = (112.5f * adc_input) - 180.0f;
+
+    float fp_vel;
+
+    if ((angle_input >= -30.0f) && (angle_input <= 30.0f)){
+        furuta_pendulum_smo = get_xhat1_fp(angle_input,iterationtime2);
+        roll_signal = balancing(angle_input, furuta_pendulum_smo);
+    } else {
+        if (angle_input < 0.0f) {
+            angle_input = angle_input * -1.0f;
+        }
+        furuta_pendulum_smo = get_xhat1_fp(angle_input,iterationtime2);
+        fp_vel = get_xhat2_fp(angle_input,iterationtime2);
+        roll_signal = swing_up(angle_input, furuta_pendulum_smo, fp_vel);
+
     }
 
-    angle_input = (0.625f * adc_input) - 1.0f;
-    
-    /* SMO */
-    furuta_pendulum_smo = get_xhat1_fp(angle_input,iterationtime2);
-    
-    angle_error = alpha_zero - angle_input;
-    
-    angle_p_control = angle_error * _params.roll_gain;
-    
-    float angle_pd_control = angle_p_control - furuta_pendulum_smo * _params.fp_d_gain;
-    
-    if (angle_pd_control > 1.0f){
-        angle_pd_control = 1.0f;
-    }
-    
-    if (angle_pd_control < -1.0f){
-        angle_pd_control = -1.0f;
-    }
-    
-    if ((angle_error > 0.5f) || (angle_error < -0.5f))
-    {
-        angle_pd_control = 0.0;
-    }
-    
-    int status = _params.furuta_pendulum;
-    if (status == 1){
-        _att_control(0) = angle_pd_control;     /**< Roll   */
-    }else{
-        _att_control(0) = 0.0;
-    }
-    
-    _furuta_pendulum_time_old = _furuta_pendulum_time_new;
 
-/*
-    if ((angle_input == 1.0f) || (angle_input == -1.0f)){
-        
-        do {
-            //nichtlinearer Regler
-        } while ((angle_input > 0.4f) || (angle_error < -0.4f));
-    }
+_pos.vz = roll_signal;
+
     
-    //linearer Regler
-*/    
+ //   int status = _params.furuta_pendulum;
+ //   if (status == 1){
+ //       _att_control(0) = roll_signal;     /**< Roll   */
+ //   }else{
+ //       _att_control(0) = 0.0;
+ //   }
     
-    
-    
+    _furuta_pendulum_time_old = _furuta_pendulum_time_new; 
     
 }
 
@@ -874,19 +970,19 @@ void WaterDepthControl::task_main()
             /* start controller */
 
                 /**< Water depth and geometric control for furuta pendulum */
-                control_attitude();
+               // control_attitude();
 
                 /**< Controller for furuta pendulum */
                 furuta_pendulum();
             
             /* end controller */
-        
+ /*
             int status_wdc = _params.water_depth_controller;
             int status_gc = _params.geometric_controller;
             int status_fp = _params.furuta_pendulum;
-            
+
             if ((status_wdc == 1) && (status_gc == 0)){
-                /* Show Parameters of SMO by using a Mavlink Topic and QGC */
+                // Show Parameters of SMO by using a Mavlink Topic and QGC
                 _pos.x = water_depth;             // Water Depth
                 _pos.y = _params.water_depth_sp;  // Water Depth Setpoint
                 _pos.z = water_depth_smo;         // Water Depth Sliding Mode Observer
@@ -896,7 +992,7 @@ void WaterDepthControl::task_main()
             }
             
             if ((status_wdc == 1) && (status_gc == 1)){
-                /* Show Parameters of Geometric Control by using a Mavlink Topic and QGC */
+                // Show Parameters of Geometric Control by using a Mavlink Topic and QGC
                 _pos.x = water_depth;
                 _pos.y = _thrust_sp;
                 _pos.z = e_R_vec(1);    // Pitch
@@ -906,7 +1002,7 @@ void WaterDepthControl::task_main()
             }
             
             if (status_fp == 1){
-                /* Show Parameters of Furuta Pendulum by using a Mavlink Topic and QGC */
+                // Show Parameters of Furuta Pendulum by using a Mavlink Topic and QGC
                 _pos.x = adc_input;
                 _pos.y = angle_input;
                 _pos.z = angle_error;
@@ -914,7 +1010,7 @@ void WaterDepthControl::task_main()
                 _pos.vy = angle_p_control;
                 _pos.vz = _att_control(0);
             }
-
+*/
             /* publish actuator controls */
             _actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
             _actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f;
