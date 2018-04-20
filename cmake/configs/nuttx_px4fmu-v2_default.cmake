@@ -112,7 +112,8 @@ set(config_module_list
 	modules/mc_pos_control
 	modules/vtol_att_control
 	modules/raw_pressure
-	modules/water_depth_control
+	modules/remote_control	
+	#modules/water_depth_control
 
 	#
 	# Logging
